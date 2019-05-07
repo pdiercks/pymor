@@ -40,7 +40,7 @@ import_names = {'ipython': 'IPython',
                 _pymess('1.0.0', 3, 7, False): 'pymess',
                 'pyopengl': 'OpenGL'}
 optional_requirements_file_only = [_pymess('1.0.0', 3, 6),_pymess('1.0.0', 3, 7),
-                    'slycot>=0.3.3', 'mpi4py']
+                    'mpi4py']
 
 
 def strip_markers(name):
