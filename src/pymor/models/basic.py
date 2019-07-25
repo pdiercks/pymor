@@ -117,7 +117,10 @@ class StationaryModel(ModelBase):
             assert rhs in operator.range
             rhs = VectorOperator(rhs, name='rhs')
 
-        assert rhs.range == operator.range and rhs.source.is_scalar and rhs.linear
+        #  assert rhs.range == operator.range and rhs.source.is_scalar and rhs.linear
+        assert operator.range and rhs.source.is_scalar and rhs.linear
+        # FIXME: currently (25.06.19, IQP impl) don't want the restriction by including rhs.range in the
+        # assert
 
         super().__init__(products=products,
                          estimator=estimator, visualizer=visualizer,
