@@ -129,7 +129,7 @@ class InstationaryModel(ModelBase):
         Dict of all product |Operators| associated with the model.
     """
 
-    def __init__(self, T, initial_data, operator, rhs_0, rhs_1, num_values=None,
+    def __init__(self, T, initial_data, operator, rhs_0, rhs_1, mass=None, num_values=None,
                  outputs=None, products=None, parameter_space=None, estimator=None, visualizer=None,
                  cache_region=None, name=None):
 
@@ -137,15 +137,19 @@ class InstationaryModel(ModelBase):
             assert rhs_0 in operator.range
             rhs_0 = VectorOperator(rhs_0, name='rhs_0')
 
-        assert isinstance(initial_data, (dict, VectorArrayInterface))
         if isinstance(initial_data, VectorArrayInterface):
             assert initial_data in operator.source
             initial_data = VectorOperator(initial_data, name='initial_data')
 
+        assert initial_data.source.is_scalar
+
         assert rhs_0 is None \
             or rhs_0.linear and rhs_0.range == operator.range and rhs_0.source.is_scalar
+        #  assert rhs_1 is None \
+        #      or rhs_1.linear and rhs_1.range == operator.range and rhs_1.source == operator.source
+        # rhs_1.linear = False in case of FenicsOperator
         assert rhs_1 is None \
-            or rhs_1.linear and rhs_1.range == operator.range and rhs_1.source == operator.source
+            or rhs_1.range == operator.range and rhs_1.source == operator.source
 
         super().__init__(products=products, estimator=estimator,
                          visualizer=visualizer, cache_region=cache_region, name=name)
@@ -154,13 +158,11 @@ class InstationaryModel(ModelBase):
         self.operator = operator
         self.rhs_0 = rhs_0
         self.rhs_1 = rhs_1
+        self.mass = mass
         self.solution_space = self.operator.source
         self.num_values = num_values
         self.outputs = FrozenDict(outputs or {})
-        if isinstance(initial_data, VectorArrayInterface):
-            self.build_parameter_type(self.initial_data, self.operator, self.rhs_0, self.rhs_1, provides={'_t': 0})
-        self.build_parameter_type(self.operator, self.rhs_0, self.rhs_1, provides={'_t': 0})
-        # FIXME: do I need to include self.initial_data here if it is a dict?
+        self.build_parameter_type(self.initial_data, self.operator, self.rhs_0, self.rhs_1, provides={'_t': 0})
         self.parameter_space = parameter_space
 
     def with_time_stepper(self, **kwargs):
@@ -170,7 +172,7 @@ class InstationaryModel(ModelBase):
     def _solve(self, mu=None, **kwargs):
         mu = self.parse_parameter(mu).copy()
 
-        unloading = kwargs.get('unloading', 1)
+        onset_of_unloading = kwargs.get('onset_of_unloading', 1)
         return_rhs = kwargs.get('return_rhs', False)
         return_stress = kwargs.get('return_stress', False)
         return_strain = kwargs.get('return_strain', False)
@@ -193,7 +195,13 @@ class InstationaryModel(ModelBase):
         A = self.operator
         F0 = self.rhs_0
         F1 = self.rhs_1
-        material = F1.material
+        if hasattr(F1, 'restricted_operator'):
+            try:
+                material = F1.restricted_operator.operator.material
+            except:
+                material = F1.restricted_operator.op.material
+        else:
+            material = F1.material
         assert isinstance(self.operator, OperatorInterface)# move this to init?
         assert isinstance(self.rhs_0, (type(None), OperatorInterface, VectorArrayInterface))
         assert isinstance(self.rhs_1, (type(None), OperatorInterface))
@@ -203,15 +211,8 @@ class InstationaryModel(ModelBase):
         num_values = self.num_values or nt + 1
         mu['_t'] = 0
 
-        initial_data = tuple(self.initial_data.values())
-        # TODO: how to make this more general?, move within the loop in case
-        # of an time dependent effective stiffness
-        self.initial_data['matrix'] = material.get_effective_stiffness()
-        coefficients = tuple(self.initial_data.values())
-
-        # ### instantaneous elasticity
-        A0 = A.with_(coefficients=initial_data)
-        U0 = A0.apply_inverse(F0.as_range_array(mu=mu), mu=mu)
+        material.initialize_history_variables()
+        U0 = self.initial_data.as_range_array(mu)# instantaneous elasticity
 
         R = A.source.empty(reserve=nt+1)
         R.append(U0)
@@ -224,28 +225,29 @@ class InstationaryModel(ModelBase):
             t += dt
             mu['_t'] = t
 
-            rhs = F1.apply(U, mu=mu)# history update is done in FenicsNonaffineOperator.apply
+            rhs = F1.apply(U, mu=mu)# history update is done in FenicsOperator.apply
 
             if return_rhs:
                 data['rhs'].append(rhs)# return only non-affine part
 
             if return_stress:
-                sig = material._history_data["sigma"].copy()
+                sig = material.history_variables["sigma"].copy()
                 data['stress'].append(sig)
 
             if return_strain:
-                eps = material._history_data["eps"].copy()
+                eps = material.history_variables["eps"].copy()
                 data['strain'].append(eps)
 
-            if t > self.T / unloading:# TODO: make onset of unloading an argument to solve?
+            if t > self.T / onset_of_unloading:# TODO: make onset of unloading an argument to solve?
                 loading= 0# unloading
 
             rhs += F0.as_range_array(mu=mu) * loading
-
-            A = A.with_(coefficients=coefficients)
 
             # ### solve
             U = A.apply_inverse(rhs, mu=mu)
             R.append(U)
 
-        return R, data
+        if return_rhs:
+            return R, data
+        else:
+            return R
