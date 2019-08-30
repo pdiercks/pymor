@@ -139,8 +139,7 @@ class FenicsEmpiricalInterpolatedOperator(OperatorBase):
         if self.MDEIM is not None:
             V = self.range.V
             tmp = df.Function(V)
-            tmp.vector()[:] = np.dot(self.MDEIM, AU.to_numpy().reshape(AU.dim,))# might be
-            #  expensive ... ?!
+            tmp.vector()[:] = np.dot(self.MDEIM, AU.to_numpy().reshape(AU.dim,))
             return self.range.make_array([tmp.vector()])
         else:
             try:
