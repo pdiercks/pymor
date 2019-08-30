@@ -14,6 +14,7 @@ from pymor.core.defaults import defaults
 from pymor.core.exceptions import ExtensionError, AccuracyError
 from pymor.core.interfaces import BasicInterface, abstractmethod
 from pymor.models.basic import StationaryModel, InstationaryModel
+from pymor.models.my_basic import InstationaryModel
 from pymor.models.iosys import LTIModel, SecondOrderModel, LinearDelayModel
 from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.operators.constructions import Concatenation, InverseOperator
@@ -207,7 +208,7 @@ class InstationaryRBReductor(ProjectionBasedReductor):
         Inner product |Operator| w.r.t. which `RB` is orthonormalized. If `None`, the
         the Euclidean inner product is used.
     initial_data_product
-        Inner product |Operator| w.r.t. which the `initial_data` of `fom` is orthogonally projected. 
+        Inner product |Operator| w.r.t. which the `initial_data` of `fom` is orthogonally projected.
         If `None`, the Euclidean inner product is used.
     product_is_mass
         If `True`, no mass matrix for the reduced |Model| is assembled.  Set to `True` if `RB` is
