@@ -81,7 +81,9 @@ def pod(A, modes=None, product=None, rtol=4e-8, atol=0., l2_err=0.,
     with logger.block('Computing eigenvalue decomposition ...'):
         eigvals = None if (modes is None or l2_err > 0.) else (len(B) - modes, len(B) - 1)
 
-        EVALS, EVECS = eigh(B, overwrite_a=True, turbo=True, eigvals=eigvals)
+        #  CAUTION: always compute all eigenvalues for now
+        #  EVALS, EVECS = eigh(B, overwrite_a=True, turbo=True, eigvals=eigvals)
+        EVALS, EVECS = eigh(B, overwrite_a=True, turbo=True)
         EVALS = EVALS[::-1]
         EVECS = EVECS.T[::-1, :]  # is this a view? yes it is!
 
@@ -100,6 +102,7 @@ def pod(A, modes=None, product=None, rtol=4e-8, atol=0., l2_err=0.,
             selected_modes = min(selected_modes, modes)
 
         SVALS = np.sqrt(EVALS[:selected_modes])
+        ALL_SVALS = np.sqrt(EVALS)
         EVECS = EVECS[:selected_modes]
 
     with logger.block(f'Computing left-singular vectors ({len(EVECS)} vectors) ...'):
@@ -117,4 +120,4 @@ def pod(A, modes=None, product=None, rtol=4e-8, atol=0., l2_err=0.,
         if len(POD) < len(EVECS):
             raise AccuracyError('additional orthonormalization removed basis vectors')
 
-    return POD, SVALS
+    return POD, SVALS, ALL_SVALS
