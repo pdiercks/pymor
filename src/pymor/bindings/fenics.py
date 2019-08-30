@@ -194,7 +194,7 @@ if config.HAVE_FENICS:
                 return None
             if identity_shift != 0:
                 return None
-            assert not solver_options
+            #  assert not solver_options # TODO why is this a good idea?
 
             if coefficients[0] == 1:
                 matrix = operators[0].matrix.copy()
@@ -490,8 +490,13 @@ if config.HAVE_FENICS:
             JJ = self.op.jacobian(UU, mu=mu)
             return NumpyMatrixOperator(JJ.matrix.array()[self.restricted_range_dofs, :])
 
+    #  @defaults('solver', 'preconditioner')
+    #  def _solver_options(solver='bicgstab', preconditioner='amg'):
+    #      return {'solver': solver, 'preconditioner': preconditioner}
+
+    # TODO: how to specify this for LincombOperator?
     @defaults('solver', 'preconditioner')
-    def _solver_options(solver='bicgstab', preconditioner='amg'):
+    def _solver_options(solver='cg', preconditioner='ilu'):
         return {'solver': solver, 'preconditioner': preconditioner}
 
     def _apply_inverse(matrix, r, v, options=None):
