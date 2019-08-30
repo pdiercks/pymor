@@ -181,16 +181,6 @@ class InstationaryModel(ModelBase):
         if not self.logging_disabled:
             self.logger.info(f'Solving {self.name} for {mu} ...')
 
-        data = {}
-
-        if return_rhs:
-            data['rhs'] = self.operator.range.empty()
-
-        if return_stress:
-            data['stress'] = list()
-
-        if return_strain:
-            data['strain'] = list()
 
         A = self.operator
         F0 = self.rhs_0
@@ -221,6 +211,18 @@ class InstationaryModel(ModelBase):
         loading = 1
         U = U0.copy()
 
+        data = {}
+
+        if return_rhs:
+            data['rhs'] = self.operator.range.empty()
+
+        if return_stress:
+            data['stress'] = list()
+
+        if return_strain:
+            total_strain = material.history_variables["eps"].copy(deepcopy=True)
+            data['strain'] = list()
+
         for n in range(nt):
             t += dt
             mu['_t'] = t
@@ -231,12 +233,14 @@ class InstationaryModel(ModelBase):
                 data['rhs'].append(rhs)# return only non-affine part
 
             if return_stress:
-                sig = material.history_variables["sigma"].copy()
+                sig = material.history_variables["sigma"].copy(deepcopy=True)
                 data['stress'].append(sig)
 
             if return_strain:
-                eps = material.history_variables["eps"].copy()
-                data['strain'].append(eps)
+                eps = material.history_variables["eps"]
+                csi = material.history_variables["csi"]
+                material.local_project(eps+csi, material.tensor_space, total_strain)
+                data['strain'].append(total_strain.copy(deepcopy=True))
 
             if t > self.T / onset_of_unloading:# TODO: make onset of unloading an argument to solve?
                 loading= 0# unloading
