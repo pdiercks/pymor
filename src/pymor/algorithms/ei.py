@@ -195,7 +195,7 @@ def deim(U, modes=None, atol=None, rtol=None, product=None, pod_options={}):
     logger = getLogger('pymor.algorithms.ei.deim')
     logger.info('Generating Interpolation Data ...')
 
-    collateral_basis, svals = pod(U, modes=modes, atol=atol, rtol=rtol, product=product, **pod_options)
+    collateral_basis, svals, all_svals = pod(U, modes=modes, atol=atol, rtol=rtol, product=product, **pod_options)
 
     interpolation_dofs = np.zeros((0,), dtype=np.int32)
     interpolation_matrix = np.zeros((0, 0))
@@ -227,7 +227,7 @@ def deim(U, modes=None, atol=None, rtol=None, product=None, pod_options={}):
 
     logger.info('Finished.')
 
-    data = {'svals': svals}
+    data = {'svals': svals, 'all_svals': all_svals}
 
     return interpolation_dofs, collateral_basis, data
 
