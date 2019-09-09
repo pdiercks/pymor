@@ -10,6 +10,7 @@ if config.HAVE_FENICS:
     import dolfin as df
     import ufl
     import numpy as np
+    from fenics_modules.helpers import local_project
 
     from pymor.bindings.fenics import FenicsVector, FenicsVectorSpace, FenicsMatrixOperator
     from pymor.core.defaults import defaults
