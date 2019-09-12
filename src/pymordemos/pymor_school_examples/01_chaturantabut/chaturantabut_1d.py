@@ -31,7 +31,6 @@ import sys
 import dolfin as df
 import numpy as np
 import matplotlib.pyplot as plt
-import meshio
 import ufl
 import warnings
 

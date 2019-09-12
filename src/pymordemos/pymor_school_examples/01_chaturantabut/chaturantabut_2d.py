@@ -43,9 +43,6 @@ import meshio
 import ufl
 import warnings
 
-sys.path.append(r"/home/pdiercks/python-projects/helpers")
-from table import print_table
-
 # pymor
 from docopt import docopt
 from pymor.basic import *
