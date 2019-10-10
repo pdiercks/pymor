@@ -80,6 +80,32 @@ if config.HAVE_FENICS:
                 R.append(r)
             return self.range.make_array(R)
 
+        def apply_unassembled(self, U, mu=None):
+            assert U in self.source
+            self._set_mu(mu)
+            R = []
+            source_vec = self.source_function.vector()
+            for u in U._list:
+                source_vec[:] = u.impl
+                if self.material:
+                    self.material.update_history(u.impl, self.range)
+
+                le_vectors = []
+                for cell in affected_cells:
+                    le_vectors.append(df.assemble_local(self.form, cell))
+                r = np.hstack(le_vectors)
+                # TODO: apply bc to local element vectors?
+                #  if self.dirichlet_bc:
+                #      for bc in self.dirichlet_bc:
+                #          bc.apply(r, source_vec)
+                R.append(r)
+
+            # ### range space for un-assembled vector
+            space = self.range.V
+            dim = space.mesh().num_cells() * space.dofmap().cell_dofs(0).shape[0]
+            range_space = NumpyVectorSpace(dim)
+            return range_space.make_array(R)
+
         def jacobian(self, U, mu=None):
             assert U in self.source and len(U) == 1
             self._set_mu(mu)
@@ -349,12 +375,12 @@ if config.HAVE_FENICS:
             JJ = self.op.jacobian(UU, mu=mu)
             return NumpyMatrixOperator(JJ.matrix.array()[self.restricted_range_dofs, :])
 
-    #  @defaults('solver', 'preconditioner')
-    #  def _solver_options(solver='bicgstab', preconditioner='amg'):
-    #      return {'solver': solver, 'preconditioner': preconditioner}
     @defaults('solver', 'preconditioner')
-    def _solver_options(solver='cg', preconditioner='ilu'):
+    def _solver_options(solver='bicgstab', preconditioner='amg'):
         return {'solver': solver, 'preconditioner': preconditioner}
+    #  @defaults('solver', 'preconditioner')
+    #  def _solver_options(solver='cg', preconditioner='ilu'):
+    #      return {'solver': solver, 'preconditioner': preconditioner}
 
     def _apply_inverse(matrix, r, v, options=None):
         options = options or _solver_options()
