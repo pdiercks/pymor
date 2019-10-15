@@ -16,7 +16,8 @@ from pymor.vectorarrays.interfaces import VectorArrayInterface
 
 @defaults('rtol', 'atol', 'l2_err', 'symmetrize', 'orthonormalize', 'check', 'check_tol')
 def pod(A, modes=None, product=None, rtol=4e-8, atol=0., l2_err=0.,
-        symmetrize=False, orthonormalize=True, check=True, check_tol=1e-10):
+        symmetrize=False, orthonormalize=True, check=True, check_tol=1e-10,
+        return_evals=False, return_svecs=False):
     """Proper orthogonal decomposition of `A`.
 
     Viewing the |VectorArray| `A` as a `A.dim` x `len(A)` matrix,
@@ -71,6 +72,8 @@ def pod(A, modes=None, product=None, rtol=4e-8, atol=0., l2_err=0.,
 
     logger = getLogger('pymor.algorithms.pod.pod')
 
+    data = {}
+
     with logger.block(f'Computing Gramian ({len(A)} vectors) ...'):
         B = A.gramian(product)
 
@@ -81,11 +84,12 @@ def pod(A, modes=None, product=None, rtol=4e-8, atol=0., l2_err=0.,
     with logger.block('Computing eigenvalue decomposition ...'):
         eigvals = None if (modes is None or l2_err > 0.) else (len(B) - modes, len(B) - 1)
 
-        #  CAUTION: always compute all eigenvalues for now
-        #  EVALS, EVECS = eigh(B, overwrite_a=True, turbo=True, eigvals=eigvals)
-        EVALS, EVECS = eigh(B, overwrite_a=True, turbo=True)
+        EVALS, EVECS = eigh(B, overwrite_a=True, turbo=True, eigvals=eigvals)
         EVALS = EVALS[::-1]
         EVECS = EVECS.T[::-1, :]  # is this a view? yes it is!
+
+        if return_evals:
+            data['evals'] = EVALS
 
         tol = max(rtol ** 2 * EVALS[0], atol ** 2)
         above_tol = np.where(EVALS >= tol)[0]
@@ -102,11 +106,14 @@ def pod(A, modes=None, product=None, rtol=4e-8, atol=0., l2_err=0.,
             selected_modes = min(selected_modes, modes)
 
         SVALS = np.sqrt(EVALS[:selected_modes])
-        ALL_SVALS = np.sqrt(EVALS)
         EVECS = EVECS[:selected_modes]
+        data['svals'] = SVALS
 
     with logger.block(f'Computing left-singular vectors ({len(EVECS)} vectors) ...'):
         POD = A.lincomb(EVECS / SVALS[:, np.newaxis])
+
+        if return_svecs:
+            data['svecs'] = EVECS / SVALS[:, np.newaxis]# return right-singular vectors
 
     if orthonormalize:
         with logger.block('Re-orthonormalizing POD modes ...'):
@@ -120,4 +127,4 @@ def pod(A, modes=None, product=None, rtol=4e-8, atol=0., l2_err=0.,
         if len(POD) < len(EVECS):
             raise AccuracyError('additional orthonormalization removed basis vectors')
 
-    return POD, SVALS, ALL_SVALS
+    return POD, data
