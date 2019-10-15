@@ -551,25 +551,47 @@ if config.HAVE_FENICS:
                 If `True`, block execution until the plot window is closed.
             """
             if filename:
-                assert not isinstance(U, tuple)
-                assert U in self.space
-                f = df.File(filename)
-                coarse_function = df.Function(self.space.V)
-                if self.mesh_refinements:
-                    mesh = self.space.V.mesh()
-                    for _ in range(self.mesh_refinements):
-                        mesh = df.refine(mesh)
-                    V_fine = df.FunctionSpace(mesh, self.space.V.ufl_element())
-                    function = df.Function(V_fine)
-                else:
-                    function = coarse_function
-                if legend:
-                    function.rename(legend, legend)
-                for u in U._list:
-                    coarse_function.vector()[:] = u.impl
+                name, ext = filename.split('.')
+                if ext == 'xdmf':# add all VectorArrays to one xdmf file
                     if self.mesh_refinements:
-                        function.vector()[:] = df.interpolate(coarse_function, V_fine).vector()
-                    f << function
+                        raise NotImplementedError
+                    assert U in self.space and len(U) == 1 or isinstance(U, tuple)
+                    assert legend is not None
+                    if not isinstance(U, tuple):
+                        U = (U,)
+                    if isinstance(legend, str):
+                        legend = (legend,)
+                    f = df.XDMFFile(filename)
+                    f.parameters["functions_share_mesh"] = True
+                    f.parameters["rewrite_function_mesh"] = False
+                    f.parameters["flush_output"] = True
+
+                    for (array, l) in zip(U, legend):
+                        function = df.Function(self.space.V, name=l)
+                        for (time, u) in enumerate(array._list):
+                            function.vector()[:] = u.impl
+                            f.write(function, time)
+
+                else:
+                    assert not isinstance(U, tuple)
+                    assert U in self.space
+                    f = df.File(filename)
+                    coarse_function = df.Function(self.space.V)
+                    if self.mesh_refinements:
+                        mesh = self.space.V.mesh()
+                        for _ in range(self.mesh_refinements):
+                            mesh = df.refine(mesh)
+                        V_fine = df.FunctionSpace(mesh, self.space.V.ufl_element())
+                        function = df.Function(V_fine)
+                    else:
+                        function = coarse_function
+                    if legend:
+                        function.rename(legend, legend)
+                    for u in U._list:
+                        coarse_function.vector()[:] = u.impl
+                        if self.mesh_refinements:
+                            function.vector()[:] = df.interpolate(coarse_function, V_fine).vector()
+                        f << function
             else:
                 from matplotlib import pyplot as plt
 
