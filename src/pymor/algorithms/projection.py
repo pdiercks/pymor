@@ -179,7 +179,10 @@ class ProjectRules(RuleTable):
         elif not hasattr(op, 'restricted_operator') or source_basis is None:
             raise RuleNotMatchingError('Has no restricted operator or source_basis is None')
         if range_basis is not None:
-            projected_collateral_basis = NumpyVectorSpace.make_array(op.collateral_basis.inner(range_basis, product))
+            if hasattr(op, 'assembled_basis') and op.assembled_basis is not None:
+                projected_collateral_basis = NumpyVectorSpace.make_array(op.assembled_basis.inner(range_basis, product))
+            else:
+                projected_collateral_basis = NumpyVectorSpace.make_array(op.collateral_basis.inner(range_basis, product))
         else:
             projected_collateral_basis = op.collateral_basis
 
