@@ -214,6 +214,7 @@ if config.HAVE_FENICS:
         @defaults('restriction_method')
         def __init__(self, form, source_space, range_space, source_function, dirichlet_bc=None,
                      parameter_setter=None, parameter_type=None, solver_options=None,
+                     jacobian_options=None,
                      restriction_method='submesh', name=None):
             assert restriction_method in ('assemble_local', 'submesh')
             assert len(form.arguments()) == 1
@@ -224,6 +225,7 @@ if config.HAVE_FENICS:
             self.dirichlet_bc = dirichlet_bc
             self.parameter_setter = parameter_setter
             self.build_parameter_type(parameter_type)
+            self.jacobian_options = jacobian_options
             self.solver_options = solver_options
             self.restriction_method = restriction_method
             self.name = name
@@ -254,7 +256,11 @@ if config.HAVE_FENICS:
             matrix = df.assemble(df.derivative(self.form, self.source_function))
             if self.dirichlet_bc:
                 self.dirichlet_bc.apply(matrix)
-            return FenicsMatrixOperator(matrix, self.source.V, self.range.V)
+            # TODO: what about passing solver_options here to FenicsMatrixOperator?
+            # might not want to use the default solver options in newton.py
+            # correction = jacobian.apply_inverse(residual, least_squares=least_squares)
+            return FenicsMatrixOperator(matrix, self.source.V, self.range.V,
+                                        solver_options=self.jacobian_options)
 
         def restricted(self, dofs):
             assert self.source.V.mesh().id() == self.range.V.mesh().id()
@@ -490,13 +496,8 @@ if config.HAVE_FENICS:
             JJ = self.op.jacobian(UU, mu=mu)
             return NumpyMatrixOperator(JJ.matrix.array()[self.restricted_range_dofs, :])
 
-    #  @defaults('solver', 'preconditioner')
-    #  def _solver_options(solver='bicgstab', preconditioner='amg'):
-    #      return {'solver': solver, 'preconditioner': preconditioner}
-
-    # TODO: how to specify this for LincombOperator?
     @defaults('solver', 'preconditioner')
-    def _solver_options(solver='cg', preconditioner='ilu'):
+    def _solver_options(solver='bicgstab', preconditioner='amg'):
         return {'solver': solver, 'preconditioner': preconditioner}
 
     def _apply_inverse(matrix, r, v, options=None):
