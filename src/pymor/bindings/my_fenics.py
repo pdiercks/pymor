@@ -43,7 +43,7 @@ if config.HAVE_FENICS:
                 assert len(form.arguments()) == 1
             if material:
                 assert inspect.isclass(type(material))
-            if subdomain_data:
+            if subdomain_data:# TODO: this is not really needed
                 assert restriction_method == 'assemble_local'# for now submesh does not work with
                 #  meso framework
             assert isinstance(dirichlet_bc, list) or dirichlet_bc == None
