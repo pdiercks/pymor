@@ -7,20 +7,14 @@ from scipy.linalg import solve, solve_triangular
 
 
 if config.HAVE_FENICS:
-    import inspect
     import dolfin as df
     import ufl
     import numpy as np
-    from fenics_modules.helpers import local_project
 
     from pymor.bindings.fenics import FenicsVector, FenicsVectorSpace, FenicsMatrixOperator
     from pymor.core.defaults import defaults
-    from pymor.core.interfaces import BasicInterface
     from pymor.operators.basic import OperatorBase
-    from pymor.operators.ei import EmpiricalInterpolatedOperator
     from pymor.operators.numpy import NumpyMatrixOperator
-    from pymor.vectorarrays.interfaces import _create_random_values, VectorArrayInterface
-    from pymor.vectorarrays.list import CopyOnWriteVector, ListVectorSpace
     from pymor.vectorarrays.numpy import NumpyVectorSpace
 
     class MechanicsOperator(OperatorBase):
@@ -229,42 +223,3 @@ if config.HAVE_FENICS:
 
         def restricted(self, dofs):
             raise NotImplementedError
-
-    class MechanicsEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator):
-        """Interpolate an 'MechanicsOperator' using Empirical Operator Interpolation."""
-
-        def __init__(self, operator, interpolation_dofs, collateral_basis, triangular,
-                     assembled_basis=None, solver_options=None, name=None):
-            if assembled_basis:
-                assert isinstance(assembled_basis, VectorArrayInterface)
-                self.assembled_basis = assembled_basis.copy()
-                triangular = False# interpolation matrix will not be triangular for UDEIM
-            super().__init__(operator, interpolation_dofs, collateral_basis, triangular,
-                             solver_options=solver_options, name=name)
-
-        def apply(self, U, mu=None):
-            mu = self.parse_parameter(mu)
-            if len(self.interpolation_dofs) == 0:
-                return self.range.zeros(len(U))
-
-            if hasattr(self, 'restricted_operator'):
-                # assert U in self.operator.op.source # should be DG space
-                # restricted_operator.source.random()
-                U_dofs = NumpyVectorSpace.make_array(U.dofs(self.source_dofs))
-                AU = self.restricted_operator.apply(U_dofs, mu=mu)
-            else:
-                AU = NumpyVectorSpace.make_array(self.operator.apply(U, mu=mu).dofs(self.interpolation_dofs))
-            try:
-                if self.triangular:
-                    interpolation_coefficients = solve_triangular(self.interpolation_matrix, AU.to_numpy().T,
-                                                                  lower=True, unit_diagonal=True).T
-                else:
-                    interpolation_coefficients = solve(self.interpolation_matrix, AU.to_numpy().T).T
-            except ValueError:  # this exception occurs when AU contains NaNs ...
-                interpolation_coefficients = np.empty((len(AU), len(self.collateral_basis))) + np.nan
-
-            if self.assembled_basis:
-                return self.assembled_basis.lincomb(interpolation_coefficients)
-            else:
-                return self.collateral_basis.lincomb(interpolation_coefficients)
-

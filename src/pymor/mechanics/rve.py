@@ -16,9 +16,9 @@ if config.HAVE_FENICS:
     )
 
     def get_linear_elastic_macro_strain_operator(range_space, measure):
-        r"""Returns a |LincombOperator| which represents the parameter separated
-        form of
-        ..math:
+        r"""Returns a |LincombOperator| which represents the parameter separated form of
+
+        .. math::
             \int_{\Omega} \varepsilon(v) \cdot C \cdot E \; \mathrm{d}x,
 
         where the 6 independent components of the macroscopic strain :math:`E`
