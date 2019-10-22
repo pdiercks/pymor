@@ -17,7 +17,7 @@ if config.HAVE_FENICS:
     from pymor.operators.numpy import NumpyMatrixOperator
     from pymor.vectorarrays.numpy import NumpyVectorSpace
 
-    class MechanicsOperator(OperatorBase):
+    class MateriallyNonlinearOperator(OperatorBase):
         r"""Wraps the linearized principle of virtual power (given as FEniCS forms) as an |Operator|.
 
         .. math::
@@ -27,21 +27,16 @@ if config.HAVE_FENICS:
 
         """
 
-        linear = True
+        linear = False# should be used with newton method (pymor.algorithms.newton.py)
 
         @defaults('restriction_method')
         def __init__(self, jacobian_form, operator_form, source_space, range_space,
-                     material=None, dirichlet_bc=None, subdomain_data=None,
-                     parameter_setter=None, parameter_type=None, solver_options=None,
-                     restriction_method='assemble_local', name=None):
-            assert restriction_method in ('assemble_local', 'submesh')
+                     material=None, dirichlet_bc=None, parameter_setter=None, parameter_type=None,
+                     solver_options=None, restriction_method='assemble_local', name=None):
+            assert restriction_method in ('assemble_local',)
             assert material is None or hasattr(material, 'update_history')
-            assert isinstance(dirichlet_bc, list) or dirichlet_bc == None
-            if subdomain_data:
-                # FIXME: subdomain data is not needed. but assemble_local should be forced in these
-                # cases
-                assert restriction_method == 'assemble_local'# FIXME: submesh will not work
-            self.jacobian = jacobian_form
+            assert isinstance(dirichlet_bc, list) or dirichlet_bc is None
+            self.J = jacobian_form
             self.operator = operator_form
             self.source = source_space
             self.range = range_space
@@ -77,7 +72,7 @@ if config.HAVE_FENICS:
             self._set_mu(mu)
             if self.material:
                 self.material.update_history(U._list[0].impl, self.range)
-            matrix = df.assemble(self.jacobian)
+            matrix = df.assemble(self.J)
             if self.dirichlet_bc:
                 for bc in self.dirichlet_bc:
                     bc.apply(matrix)
@@ -156,16 +151,16 @@ if config.HAVE_FENICS:
                     dir_vals_r = None
                     dir_dofs_r_source = None
                 return (
-                    RestrictedMechanicsOperatorAssembleLocal(self, np.array(dofs), source_dofs.copy(), affected_cells,
-                                                          source_local_restricted, range_local_restricted,
-                                                          dir_dofs_r, dir_vals_r, dir_dofs_r_source),
+                    RestrictedMateriallyNonlinearOperatorAssembleLocal(self, np.array(dofs), source_dofs.copy(), affected_cells,
+                                                                       source_local_restricted, range_local_restricted,
+                                                                       dir_dofs_r, dir_vals_r, dir_dofs_r_source),
                     source_dofs
                 )
 
             elif self.restriction_method == 'submesh':
                 raise NotImplementedError
 
-    class RestrictedMechanicsOperatorAssembleLocal(OperatorBase):
+    class RestrictedMateriallyNonlinearOperatorAssembleLocal(OperatorBase):
 
         linear = False
 
@@ -220,6 +215,175 @@ if config.HAVE_FENICS:
                 #  J[np.meshgrid(self.dirichlet_dofs, self.dirichlet_source_dofs, indexing='ij')] = 1.
                 J[tuple(np.meshgrid(self.dirichlet_dofs, self.dirichlet_source_dofs, indexing='ij'))] = 1.
             return NumpyMatrixOperator(J[:-1, :-1])
+
+        def restricted(self, dofs):
+            raise NotImplementedError
+
+    class NonaffineOperator(OperatorBase):
+        """Wraps a nonaffine FEniCS form as an |Operator|.
+        """
+
+        linear = True
+
+        @defaults('restriction_method')
+        def __init__(self, form, source_space, range_space, material=None,
+                     dirichlet_bc=None, parameter_setter=None, parameter_type=None,
+                     solver_options=None, restriction_method='assemble_local', name=None):
+            assert restriction_method in ('assemble_local',)
+            assert material is None or hasattr(material, 'update_history')
+            assert isinstance(dirichlet_bc, list) or dirichlet_bc is None
+            self.form = form
+            self.source = source_space
+            self.range = range_space
+            self.material = material
+            self.dirichlet_bc = dirichlet_bc
+            self.parameter_setter = parameter_setter
+            self.build_parameter_type(parameter_type)
+            self.solver_options = solver_options
+            self.restriction_method = restriction_method
+            self.name = name
+
+        def _set_mu(self, mu=None):
+            mu = self.parse_parameter(mu)
+            if self.parameter_setter:
+                self.parameter_setter(mu)
+
+        def apply(self, U, mu=None):
+            assert U in self.source
+            self._set_mu(mu)
+            R = []
+            for u in U._list:
+                if self.material:
+                    self.material.update_history(u.impl, self.range)
+                r = df.assemble(self.form)
+                if self.dirichlet_bc:
+                    for bc in self.dirichlet_bc:
+                        bc.apply(r)
+                R.append(r)
+            return self.range.make_array(R)
+
+        def jacobian(self, U, mu=None):
+            raise NotImplementedError
+
+        def restricted(self, dofs):
+            assert self.source.V.mesh().id() == self.range.V.mesh().id()
+
+            # first determine affected cells
+            self.logger.info('Computing affected cells ...')
+            mesh = self.source.V.mesh()
+            range_dofmap = self.range.V.dofmap()
+            affected_cell_indices = set()
+            for c in df.cells(mesh):
+                cell_index = c.index()
+                local_dofs = range_dofmap.cell_dofs(cell_index)
+                for ld in local_dofs:
+                    if ld in dofs:
+                        affected_cell_indices.add(cell_index)
+                        continue
+            affected_cell_indices = list(sorted(affected_cell_indices))
+            affected_cells = [df.Cell(mesh, ci) for ci in affected_cell_indices]
+
+            # increase stencil if needed
+            # TODO
+
+            # determine source dofs
+            self.logger.info('Computing source DOFs ...')
+            source_dofmap = self.source.V.dofmap()
+            source_dofs = set()
+            for cell_index in affected_cell_indices:
+                local_dofs = source_dofmap.cell_dofs(cell_index)
+                source_dofs.update(local_dofs)
+            source_dofs = np.array(sorted(source_dofs), dtype=np.intc)
+
+            if self.restriction_method == 'assemble_local':
+                # range local-to-restricted dof mapping
+                to_restricted = np.zeros(self.range.dim, dtype=np.int32)
+                to_restricted[:] = len(dofs)
+                to_restricted[dofs] = np.arange(len(dofs))
+                range_local_restricted = np.array([to_restricted[range_dofmap.cell_dofs(ci)]
+                                                   for ci in affected_cell_indices])
+
+                # source local-to-restricted dof mapping
+                to_restricted = np.zeros(self.source.dim, dtype=np.int32)
+                to_restricted[:] = len(source_dofs)
+                to_restricted[source_dofs] = np.arange(len(source_dofs))
+                source_local_restricted = np.array([to_restricted[source_dofmap.cell_dofs(ci)]
+                                                   for ci in affected_cell_indices])
+
+                # compute dirichlet DOFs
+                if self.dirichlet_bc:
+                    self.logger.warn('Dirichlet DOF handling will only work for constant, non-paramentric '
+                                     'Dirichlet boundary conditions')
+                    for bc in self.dirichlet_bc:
+                        v1 = self.source.zeros()._list[0].impl
+                        v1[:] = 42
+                        v2 = self.source.zeros()._list[0].impl
+                        v2[:] = 0
+                        bc.apply(v1)
+                        bc.apply(v2)
+                    dir_dofs = [i for i in range(self.source.dim) if (v1[i] != 42) or (v2[i] != 0)]
+                    # determine whether dir_dofs are in interpolation dofs
+                    intersection = set(dofs.tolist()).intersection(set(dir_dofs))
+                    if len(intersection) < 1:
+                        dir_dofs_r = None
+                        dir_vals_r = None
+                        dir_dofs_r_source = None
+                    else:
+                        dir_dofs_r, dir_vals_r = zip(*((i, v1[dof]) for i, dof in enumerate(dofs) if dof in dir_dofs))
+                        dir_dofs_r = np.array(dir_dofs_r, dtype=np.int32)
+                        dir_vals_r = np.array(dir_vals_r)
+                        dir_dofs_r_source = to_restricted[dofs[dir_dofs_r]]
+                else:
+                    dir_dofs_r = None
+                    dir_vals_r = None
+                    dir_dofs_r_source = None
+                return (
+                    RestrictedNonaffineOperatorAssembleLocal(self, np.array(dofs), source_dofs.copy(), affected_cells,
+                                                          source_local_restricted, range_local_restricted,
+                                                          dir_dofs_r, dir_vals_r, dir_dofs_r_source),
+                    source_dofs
+                )
+
+            elif self.restriction_method == 'submesh':
+                raise NotImplementedError
+
+    class RestrictedNonaffineOperatorAssembleLocal(OperatorBase):
+
+        linear = True
+
+        def __init__(self, operator, range_dofs, source_dofs, cells, source_local_restricted, range_local_restricted,
+                     dirichlet_dofs, dirichlet_values, dirichlet_source_dofs):
+            self.source = NumpyVectorSpace(len(source_dofs))
+            self.range = NumpyVectorSpace(len(range_dofs))
+            self.operator = operator
+            self.range_dofs = range_dofs
+            self.source_dofs = source_dofs
+            self.cells = cells
+            self.source_local_restricted = source_local_restricted
+            self.range_local_restricted = range_local_restricted
+            self.dirichlet_dofs = dirichlet_dofs
+            self.dirichlet_values = dirichlet_values
+            self.dirichlet_source_dofs = dirichlet_source_dofs
+            self.build_parameter_type(operator)
+
+        def apply(self, U, mu=None):
+            assert U in self.source
+            operator = self.operator
+            operator._set_mu(mu)
+            R = np.zeros((len(U), self.range.dim + 1))
+            for u, r in zip(U.data, R):
+                if self.operator.material:
+                    self.operator.material.update_history(u, self.operator.range,
+                                                          source_dofs=self.source_dofs)
+                for cell, local_restricted in zip(self.cells, self.range_local_restricted):
+                    local_evaluations = df.assemble_local(operator.form, cell)
+                    r[local_restricted] += local_evaluations
+                if self.dirichlet_values:
+                    r[self.dirichlet_dofs] = u[self.dirichlet_source_dofs] - self.dirichlet_values
+            return self.range.make_array(R[:, :-1])
+
+        def jacobian(self, U, mu=None):
+            raise NotImplementedError
 
         def restricted(self, dofs):
             raise NotImplementedError
