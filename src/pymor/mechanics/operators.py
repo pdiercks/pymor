@@ -3,31 +3,30 @@
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from pymor.core.config import config
-from scipy.linalg import solve, solve_triangular
-
 
 if config.HAVE_FENICS:
     import dolfin as df
-    import ufl
     import numpy as np
+    import ufl
 
-    from pymor.bindings.fenics import FenicsVector, FenicsVectorSpace, FenicsMatrixOperator
+    from pymor.bindings.fenics import FenicsVectorSpace, FenicsMatrixOperator
     from pymor.core.defaults import defaults
     from pymor.operators.basic import OperatorBase
     from pymor.operators.numpy import NumpyMatrixOperator
     from pymor.vectorarrays.numpy import NumpyVectorSpace
 
     class MateriallyNonlinearOperator(OperatorBase):
-        r"""Wraps the linearized principle of virtual power (given as FEniCS forms) as an |Operator|.
+        r"""Wraps the linearized principle of virtual power (given as FEniCS forms) as an |Operator|
 
         .. math::
             \int_{\Omega} \varepsilon(v) \cdot \frac{\partial \sigma}{\partial \varepsilon}(u^n;\mu)
-            \cdot \varepsilon(u^{n+1}) \; \mathrm{d}x = f_{\mathrm{ext}} - \int_{\Omega} \sigma(u^n;\mu)
-            \cdot \varepsilon(v) \; \mathrm{d}x\, \quad \forall v \in \mathbb{V}.
+            \cdot \varepsilon(u^{n+1}) \; \mathrm{d}x = f_{\mathrm{ext}}
+            - \int_{\Omega} \sigma(u^n;\mu) \cdot \varepsilon(v) \; \mathrm{d}x\,
+            \quad \forall v \in \mathbb{V}.
 
         """
 
-        linear = False# should be used with newton method (pymor.algorithms.newton.py)
+        linear = False  # should be used with newton method (pymor.algorithms.newton.py)
 
         @defaults('restriction_method')
         def __init__(self, jacobian_form, operator_form, source_space, range_space,
@@ -121,7 +120,7 @@ if config.HAVE_FENICS:
                 to_restricted[:] = len(source_dofs)
                 to_restricted[source_dofs] = np.arange(len(source_dofs))
                 source_local_restricted = np.array([to_restricted[source_dofmap.cell_dofs(ci)]
-                                                   for ci in affected_cell_indices])
+                                                    for ci in affected_cell_indices])
 
                 # compute dirichlet DOFs
                 if self.dirichlet_bc:
@@ -151,9 +150,10 @@ if config.HAVE_FENICS:
                     dir_vals_r = None
                     dir_dofs_r_source = None
                 return (
-                    RestrictedMateriallyNonlinearOperatorAssembleLocal(self, np.array(dofs), source_dofs.copy(), affected_cells,
-                                                                       source_local_restricted, range_local_restricted,
-                                                                       dir_dofs_r, dir_vals_r, dir_dofs_r_source),
+                    RestrictedMateriallyNonlinearOperatorAssembleLocal(self, np.array(dofs), source_dofs.copy(),
+                                                                       affected_cells, source_local_restricted,
+                                                                       range_local_restricted, dir_dofs_r,
+                                                                       dir_vals_r, dir_dofs_r_source),
                     source_dofs
                 )
 
@@ -198,7 +198,7 @@ if config.HAVE_FENICS:
         def jacobian(self, U, mu=None):
             assert U in self.source and len(U) == 1
             operator = self.operator
-            source_vec = operator.source_function.vector()# FIXME: there is no source function
+            source_vec = operator.source_function.vector()  # FIXME: there is no source function
             operator._set_mu(mu)
             J = np.zeros((self.range.dim + 1, self.source.dim + 1))
             source_vec[self.source_dofs] = U.data[0]
@@ -210,9 +210,8 @@ if config.HAVE_FENICS:
                 local_matrix = df.assemble_local(operator.jacobian, cell)
                 J[tuple(np.meshgrid(range_local_restricted, source_local_restricted, indexing='ij'))] += local_matrix
             if self.dirichlet_dofs is not None:
-                J[self.dirichlet_dofs, :] = 0.# if self.dirichlet_dofs is None, don't do this. this will
+                J[self.dirichlet_dofs, :] = 0.  # if self.dirichlet_dofs is None, don't do this. this will
                 #  set all elements of J to zero
-                #  J[np.meshgrid(self.dirichlet_dofs, self.dirichlet_source_dofs, indexing='ij')] = 1.
                 J[tuple(np.meshgrid(self.dirichlet_dofs, self.dirichlet_source_dofs, indexing='ij'))] = 1.
             return NumpyMatrixOperator(J[:-1, :-1])
 
@@ -229,7 +228,7 @@ if config.HAVE_FENICS:
         def __init__(self, form, source_space, range_space, material=None,
                      dirichlet_bc=None, parameter_setter=None, parameter_type=None,
                      solver_options=None, restriction_method='assemble_local', name=None):
-            assert restriction_method in ('assemble_local',)
+            assert restriction_method in ('assemble_local', 'submesh')
             assert material is None or hasattr(material, 'update_history')
             assert isinstance(dirichlet_bc, list) or dirichlet_bc is None
             self.form = form
@@ -308,7 +307,7 @@ if config.HAVE_FENICS:
                 to_restricted[:] = len(source_dofs)
                 to_restricted[source_dofs] = np.arange(len(source_dofs))
                 source_local_restricted = np.array([to_restricted[source_dofmap.cell_dofs(ci)]
-                                                   for ci in affected_cell_indices])
+                                                    for ci in affected_cell_indices])
 
                 # compute dirichlet DOFs
                 if self.dirichlet_bc:
@@ -339,13 +338,120 @@ if config.HAVE_FENICS:
                     dir_dofs_r_source = None
                 return (
                     RestrictedNonaffineOperatorAssembleLocal(self, np.array(dofs), source_dofs.copy(), affected_cells,
-                                                          source_local_restricted, range_local_restricted,
-                                                          dir_dofs_r, dir_vals_r, dir_dofs_r_source),
+                                                             source_local_restricted, range_local_restricted,
+                                                             dir_dofs_r, dir_vals_r, dir_dofs_r_source),
                     source_dofs
                 )
 
             elif self.restriction_method == 'submesh':
-                raise NotImplementedError
+                # generate restricted spaces
+                self.logger.info('Building submesh ...')
+                subdomain = df.MeshFunction('size_t', mesh, mesh.geometry().dim())
+                for ci in affected_cell_indices:
+                    subdomain.set_value(ci, 1)
+                submesh = df.SubMesh(mesh, subdomain, 1)
+
+                # build restricted form
+                self.logger.info('Building UFL form on submesh ...')
+                V_r_source = df.FunctionSpace(submesh, self.source.V.ufl_element())
+                V_r_range = df.FunctionSpace(submesh, self.range.V.ufl_element())
+                assert V_r_source.dim() == len(source_dofs)
+
+                if self.source.V != self.range.V:
+                    assert all(arg.ufl_function_space() != self.source.V for arg in self.form.arguments())
+                args = tuple((df.function.argument.Argument(V_r_range, arg.number(), arg.part())
+                              if arg.ufl_function_space() == self.range.V else arg)
+                             for arg in self.form.arguments())
+                if any(isinstance(coeff, df.Function) and coeff != self.source_function for coeff in
+                       self.form.coefficients()):
+                    raise NotImplementedError
+                source_function_r = df.Function(V_r_source)
+                form_r = ufl.replace_integral_domains(
+                    self.form(*args, coefficients={self.source_function: source_function_r}),
+                    submesh.ufl_domain()
+                )
+                if self.dirichlet_bc:
+                    bc = self.dirichlet_bc
+                    if not bc.user_subdomain():
+                        raise NotImplementedError
+                    bc_r = df.DirichletBC(V_r_source, bc.value(), bc.user_subdomain(), bc.method())
+                else:
+                    bc_r = None
+
+                # source dof mapping
+                self.logger.info('Computing source DOF mapping ...')
+                u = df.Function(self.source.V)
+                u_vec = u.vector()
+                restricted_source_dofs = []
+                for source_dof in source_dofs:
+                    u_vec.zero()
+                    u_vec[source_dof] = 1
+                    u_r = df.interpolate(u, V_r_source)
+                    u_r = u_r.vector().get_local()
+                    if not np.all(np.logical_or(np.abs(u_r) < 1e-10, np.abs(u_r - 1.) < 1e-10)):
+                        raise NotImplementedError
+                    r_dof = np.where(np.abs(u_r - 1.) < 1e-10)[0]
+                    if not len(r_dof) == 1:
+                        raise NotImplementedError
+                    restricted_source_dofs.append(r_dof[0])
+                restricted_source_dofs = np.array(restricted_source_dofs, dtype=np.int32)
+                assert len(set(restricted_source_dofs)) == len(source_dofs)
+
+                # source dof mapping
+                self.logger.info('Computing range DOF mapping ...')
+                u = df.Function(self.range.V)
+                u_vec = u.vector()
+                restricted_range_dofs = []
+                for range_dof in dofs:
+                    u_vec.zero()
+                    u_vec[range_dof] = 1
+                    u_r = df.interpolate(u, V_r_range)
+                    u_r = u_r.vector().get_local()
+                    if not np.all(np.logical_or(np.abs(u_r) < 1e-10, np.abs(u_r - 1.) < 1e-10)):
+                        raise NotImplementedError
+                    r_dof = np.where(np.abs(u_r - 1.) < 1e-10)[0]
+                    if not len(r_dof) == 1:
+                        raise NotImplementedError
+                    restricted_range_dofs.append(r_dof[0])
+                restricted_range_dofs = np.array(restricted_range_dofs, dtype=np.int32)
+
+                op_r = NonaffineOperator(form_r, FenicsVectorSpace(V_r_source), FenicsVectorSpace(V_r_range),
+                                         material=material_r, dirichlet_bc=bc_r, parameter_setter=self.parameter_setter,
+                                         parameter_type=self.parameter_type)
+
+                return (RestrictedNonaffineOperatorSubMesh(op_r, restricted_range_dofs),
+                        source_dofs[np.argsort(restricted_source_dofs)])
+            else:
+                assert False
+
+    class RestrictedNonaffineOperatorSubMesh(OperatorBase):
+
+        linear = False
+
+        def __init__(self, op, restricted_range_dofs):
+            self.source = NumpyVectorSpace(op.source.dim)
+            self.range = NumpyVectorSpace(len(restricted_range_dofs))
+            self.op = op
+            self.restricted_range_dofs = restricted_range_dofs
+            self.build_parameter_type(op)
+
+        def apply(self, U, mu=None):
+            assert U in self.source
+            UU = self.op.source.zeros(len(U))
+            for uu, u in zip(UU._list, U.data):
+                uu.impl[:] = u
+            VV = self.op.apply(UU, mu=mu)
+            V = self.range.zeros(len(VV))
+            for v, vv in zip(V.data, VV._list):
+                v[:] = vv.impl[self.restricted_range_dofs]
+            return V
+
+        def jacobian(self, U, mu=None):
+            assert U in self.source and len(U) == 1
+            UU = self.op.source.zeros()
+            UU._list[0].impl[:] = U.data[0]
+            JJ = self.op.jacobian(UU, mu=mu)
+            return NumpyMatrixOperator(JJ.matrix.array()[self.restricted_range_dofs, :])
 
     class RestrictedNonaffineOperatorAssembleLocal(OperatorBase):
 
