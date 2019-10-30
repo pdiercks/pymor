@@ -253,7 +253,7 @@ if config.HAVE_FENICS:
             R = []
             for u in U._list:
                 if self.material:
-                    self.material.update_history(u.impl, self.range)
+                    self.material.update_history(u.impl, mu=mu, range_space=self.range)
                 r = df.assemble(self.form)
                 if self.dirichlet_bc:
                     for bc in self.dirichlet_bc:
