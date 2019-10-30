@@ -42,18 +42,21 @@ import dolfin as df
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import meshio
 import ufl
 import warnings
 #  sys.path.append(r"/home/pdiercks/python-projects/helpers")
 #  from table import print_table
 
 # pymor
-from pymor.basic import *
+from pymor.algorithms.ei import deim
+from pymor.models.basic import StationaryModel
+from pymor.operators.ei import EmpiricalInterpolatedOperator
 from pymor.operators.my_ei import FenicsEmpiricalInterpolatedOperator
+from pymor.operators.constructions import LincombOperator
 from pymor.bindings.fenics import FenicsVectorSpace, FenicsMatrixOperator
 from pymor.bindings.my_fenics_old import FenicsNonaffineVectorOperator
 from pymor.parameters.base import ParameterType
+from pymor.parameters.spaces import CubicParameterSpace
 from pymor.tools.timing import Timer
 
 from ffc.quadrature.deprecation import QuadratureRepresentationDeprecationWarning
@@ -65,6 +68,8 @@ WARNING = 30
 df.set_log_level(WARNING)
 
 # ### helpers
+
+
 def parse_arguments(args):
     args = docopt(__doc__, args)
     args["QUAD_DEG"] = int(args["QUAD_DEG"])
@@ -82,6 +87,7 @@ def parse_arguments(args):
     if args['--to-csv']:
         assert args['--err'], 'Cannot save to csv without "--err" option.'
     return args
+
 
 def local_project(v, V, u=None):
     """project v onto V and store the values in u"""
@@ -101,6 +107,7 @@ def local_project(v, V, u=None):
     else:
         solver.solve_local_rhs(u)
         return
+
 
 def compute_errors(fom, rom, args, product=None):
     results = {}
@@ -122,7 +129,7 @@ def compute_errors(fom, rom, args, product=None):
         TIME.append(timer.dt)
         if args['--product']:
             # use weighted norm
-            aerr = fom.mass_norm(U - URB)[0]# return float for print_table
+            aerr = fom.mass_norm(U - URB)[0]  # return float for print_table
             rerr = aerr / fom.mass_norm(U)[0]
         else:
             # use euclidean norm
@@ -136,12 +143,12 @@ def compute_errors(fom, rom, args, product=None):
     results["t-fom"] = FOM_TIME
     return results
 
+
 def discretize_fenics(args):
     mesh = df.Mesh("data/gaussian.xml")
-    subdomains = df.MeshFunction("size_t", mesh, "data/gaussian_physical_region.xml")
+    #  subdomains = df.MeshFunction("size_t", mesh, "data/gaussian_physical_region.xml")
     boundaries = df.MeshFunction("size_t", mesh, "data/gaussian_facet_region.xml")
     x = ufl.SpatialCoordinate(mesh)
-
 
     # ### parametrization
     parameter_type = ParameterType({"x": (), "y": ()})
@@ -160,6 +167,11 @@ def discretize_fenics(args):
     # ### quadrature space
     QE = df.FiniteElement("Quadrature", mesh.ufl_cell(), degree=degree, quad_scheme="default")
     Q = df.FunctionSpace(mesh, QE)
+
+    print("\n *** MESH DATA ***\n")
+    print("cells in mesh: ", mesh.num_cells())
+    print("integration points: ", Q.dim())
+
     psi = df.TrialFunction(Q)
     w = df.TestFunction(Q)
     q_points = Q.tabulate_dof_coordinates()
@@ -176,8 +188,8 @@ def discretize_fenics(args):
     m0.assign(df.Constant(1.0))
     m1.assign(df.Constant(1.0))
     gaussian_expr = ufl.exp(
-            -2.0*(x[0] - m0)**2 - 2.0*(x[1] - m1)**2
-        )
+        -2.0*(x[0] - m0)**2 - 2.0*(x[1] - m1)**2
+    )
 
     # ### RHS
     L = gaussian_expr * v * dx
@@ -217,9 +229,10 @@ def discretize_fenics(args):
     product_iqp = FenicsMatrixOperator(mass_matrix_iqp, Q, Q, name="mass")
     fe_space = FenicsVectorSpace(V)
     rhs_std = FenicsNonaffineVectorOperator(L, fe_space,
-                                        parameter_setter=param_setter,
-                                        parameter_type=parameter_type,
-                                        restriction_method='submesh')
+                                            parameter_setter=param_setter,
+                                            parameter_type=parameter_type,
+                                            restriction_method='submesh')
+
     def numpy_gaussian(points,  mu):
         x = points[:, 0]
         y = points[:, 1]
@@ -241,6 +254,7 @@ def discretize_fenics(args):
     fom_iqp = StationaryModel(op, rhs_iqp, products={"mass": product_iqp}, parameter_space=parameter_space)
     return fom_std, fom_iqp
 
+
 def perform_deim(model, args):
     """deim basis generation"""
     if model.rhs.restriction_method == 'IQP':
@@ -259,6 +273,7 @@ def perform_deim(model, args):
     dofs, cb, data = deim(D, rtol=rtol, product=model.mass_product, pod_options=options)
     return dofs, cb, data
 
+
 def main(args):
     args = parse_arguments(args)
     fom_std, fom_iqp = discretize_fenics(args)
@@ -267,6 +282,9 @@ def main(args):
     ei_rhs = EmpiricalInterpolatedOperator(fom_std.rhs, collateral_basis=basis,
                                            interpolation_dofs=idofs, triangular=False)
     fom_std_ei = fom_std.with_(rhs=ei_rhs)
+
+    print("\n *** affected cells ***\n")
+    print(fom_std_ei.rhs.restricted_operator.op.range.V.mesh().num_cells())
 
     ei_iqp_rhs = FenicsEmpiricalInterpolatedOperator(fom_iqp.rhs,
                                                      interpolation_dofs=q_idofs,
@@ -286,7 +304,7 @@ def main(args):
         iqp = pd.DataFrame(data=RIQP)
         # process data and create final DataFrame
         d = {
-            'deim variant': ['standard', 'IQP'],
+            'deim variant': ['standard', 'IPI'],
             'max abs err': [
                 np.amax(std["abs err"].values),
                 np.amax(iqp["abs err"].values)
@@ -306,10 +324,10 @@ def main(args):
         # ### timing
         # mean time per solve
         t = {
-            'mesh size': [mesh.num_cells(),],
-            'FOM': [std['t-fom'].mean(),],
-            'DEIM-Std': [std['t'].mean(),],
-            'DEIM-IQP': [iqp['t'].mean(),],
+            'mesh size': [mesh.num_cells(), ],
+            'FOM': [std['t-fom'].mean(), ],
+            'DEIM-Std': [std['t'].mean(), ],
+            'DEIM-IQP': [iqp['t'].mean(), ],
         }
         timing = pd.DataFrame(data=t)
         print("\n*** mean time per solve ***\n")
@@ -328,15 +346,15 @@ def main(args):
     if args['--plot']:
         plt.figure(1)
         df.plot(mesh)
-        plt.plot(qp[:, 0], qp[:, 1], 'k.', markersize=1)# all integration points
-        plt.plot(p[:, 0], p[:, 1], 'ro', markersize=3, fillstyle='none')# points used for interpolation
+        plt.plot(qp[:, 0], qp[:, 1], 'k.', markersize=1)  # all integration points
+        plt.plot(p[:, 0], p[:, 1], 'ro', markersize=3, fillstyle='none')  # points used for interpolation
         if args['--to-pgf']:
             path = '/home/pdiercks/tex-documents/notes/reduction/tikz/'
             plt.savefig(path + 'GaussianMesh.pgf')
 
         plt.figure(2)
         df.plot(submesh)
-        plt.plot(p[:, 0], p[:, 1], 'ro', markersize=3, fillstyle='none')# points used for interpolation
+        plt.plot(p[:, 0], p[:, 1], 'ro', markersize=3, fillstyle='none')  # points used for interpolation
         if args['--to-pgf']:
             path = '/home/pdiercks/tex-documents/notes/reduction/tikz/'
             plt.savefig(path + 'GaussianSubMesh.pgf')
@@ -350,14 +368,15 @@ def main(args):
 
     if args['--to-csv']:
         svals = {
-            'DEIM-Std': deim_data['svals'],
-            'DEIM-IQP': q_deim_data['svals'],
+            'DEIM-Std': deim_data['svals'] / deim_data['svals'][0],
+            'DEIM-IQP': q_deim_data['svals'] / q_deim_data['svals'][0],
         }
         s = pd.DataFrame(data={
             k: pd.Series(x) for k, x in svals.items()
         })
         path = '/home/pdiercks/tex-documents/notes/reduction/data/'
         s.to_csv(path + 'gaussian_svals.csv')
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
