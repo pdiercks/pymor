@@ -2,8 +2,6 @@
 # Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
-from pymor.algorithms.timestepping import TimeStepperInterface
-from pymor.bindings.fenics import FenicsVectorSpace
 from pymor.models.interfaces import ModelInterface
 from pymor.operators.constructions import VectorOperator, induced_norm
 from pymor.operators.interfaces import OperatorInterface
@@ -181,28 +179,29 @@ class InstationaryModel(ModelBase):
         if not self.logging_disabled:
             self.logger.info(f'Solving {self.name} for {mu} ...')
 
-
         A = self.operator
         F0 = self.rhs_0
         F1 = self.rhs_1
         if hasattr(F1, 'restricted_operator'):
+            # TODO: if this is True then get the restricted material for submesh method
             try:
-                material = F1.restricted_operator.operator.material
-            except:
-                material = F1.restricted_operator.op.material
+                material = F1.restricted_operator.operator.material  # assemble_local
+            except AttributeError:
+                material = F1.restricted_operator.op.material  # submesh
         else:
             material = F1.material
-        assert isinstance(self.operator, OperatorInterface)# move this to init?
+        assert isinstance(self.operator, OperatorInterface)  # move this to init?
         assert isinstance(self.rhs_0, (type(None), OperatorInterface, VectorArrayInterface))
         assert isinstance(self.rhs_1, (type(None), OperatorInterface))
         assert self.operator.source == self.operator.range
-        dt = material._dt
+        #  dt = material._dt
+        dt = mu['dt']
         nt = int(self.T / dt)
-        num_values = self.num_values or nt + 1
+        #  num_values = self.num_values or nt + 1
         mu['_t'] = 0
 
         material.initialize_history_variables()
-        U0 = self.initial_data.as_range_array(mu)# instantaneous elasticity
+        U0 = self.initial_data.as_range_array(mu)  # instantaneous elasticity
 
         R = A.source.empty(reserve=nt+1)
         R.append(U0)
@@ -223,14 +222,14 @@ class InstationaryModel(ModelBase):
             total_strain = material.history_variables["eps"].copy(deepcopy=True)
             data['strain'] = list()
 
-        for n in range(nt):
+        for n in range(nt):  # TODO: adaptive time stepping
             t += dt
             mu['_t'] = t
 
-            rhs = F1.apply(U, mu=mu)# history update is done in FenicsOperator.apply
+            rhs = F1.apply(U, mu=mu)  # history update is done in FenicsOperator.apply
 
             if return_rhs:
-                data['rhs'].append(rhs)# return only non-affine part
+                data['rhs'].append(rhs)  # return only non-affine part
 
             if return_stress:
                 sig = material.history_variables["sigma"].copy(deepcopy=True)
@@ -242,8 +241,8 @@ class InstationaryModel(ModelBase):
                 material.local_project(eps+csi, material.tensor_space, total_strain)
                 data['strain'].append(total_strain.copy(deepcopy=True))
 
-            if t > self.T / onset_of_unloading:# TODO: make onset of unloading an argument to solve?
-                loading= 0# unloading
+            if t > self.T / onset_of_unloading:  # TODO: make onset of unloading an argument to solve?
+                loading = 0  # unloading
 
             rhs += F0.as_range_array(mu=mu) * loading
 
