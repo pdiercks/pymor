@@ -2,8 +2,13 @@
 # Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
+import numpy as np
+from scipy.linalg import solve, solve_triangular
+
 from pymor.operators.ei import EmpiricalInterpolatedOperator
 from pymor.vectorarrays.interfaces import VectorArrayInterface
+from pymor.vectorarrays.numpy import NumpyVectorSpace
+
 
 class MechanicsEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator):
     """Interpolate a 'MechanicsOperator' using Empirical Operator Interpolation."""
@@ -13,7 +18,7 @@ class MechanicsEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator):
         if assembled_basis:
             assert isinstance(assembled_basis, VectorArrayInterface)
             self.assembled_basis = assembled_basis.copy()
-            triangular = False# interpolation matrix will not be triangular for UDEIM
+            triangular = False  # interpolation matrix will not be triangular for UDEIM
         super().__init__(operator, interpolation_dofs, collateral_basis, triangular,
                          solver_options=solver_options, name=name)
 
@@ -42,4 +47,3 @@ class MechanicsEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator):
             return self.assembled_basis.lincomb(interpolation_coefficients)
         else:
             return self.collateral_basis.lincomb(interpolation_coefficients)
-
