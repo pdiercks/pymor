@@ -37,18 +37,17 @@ class CreepTestSolution:
 
 
 class ParametricKelvinChain(Parametric, HistoryMaterial):
-    """Base class representing parametric non-aging Kelvin Chain
+    """class representing parametric non-aging Kelvin Chain
 
     Parameters
     ----------
         mesh                    Partition of the domain Ω.
         degree                  Quadrature degree.
-
-        **kwargs
-            num_kelvin_elements=3   Number of Kelvin elements.
-            E=1.0                   Young's modulus.
-            NU=0.3                  Poisson ratio.
-            plane_stress=False      Constraints to be used in 2d case.
+        num_kelvin_elements=3   Number of Kelvin elements.
+        NU=0.3                  Poisson ratio.
+        plane_stress=False      Constraints to be used in 2d case.
+        parameter_setter=None   Function to set parameters.
+        parameter_type=None     The parameter type to use.
 
     Attributes
     ----------
@@ -82,6 +81,15 @@ class ParametricKelvinChain(Parametric, HistoryMaterial):
         self.plane_stress = plane_stress
         self.parameter_setter = parameter_setter
         self.build_parameter_type(parameter_type)
+        self.kwargs = {
+            'nkelvinelem': self.num_kelvin_elements,
+            'plane_stress': self.plane_stress,
+            'parameter_setter': self.parameter_setter,
+            'parameter_type': parameter_type
+        }
+        #  use like this:
+        #  material = ParametricKelvinChain(mesh, degree, plane_stress=True)
+        #  mat_r = type(material)(submesh, material.degree, **material.kwargs)
 
     def _set_mu(self, mu=None):
         mu = self.parse_parameter(mu)
