@@ -7,7 +7,6 @@ from pymor.core.config import config
 if config.HAVE_FENICS:
     import dolfin as df
     import numpy as np
-    import ufl
 
     from pymor.bindings.fenics import FenicsVectorSpace, FenicsMatrixOperator
     from pymor.core.defaults import defaults
@@ -348,33 +347,28 @@ if config.HAVE_FENICS:
                 self.logger.info('Building submesh ...')
                 subdomain = df.MeshFunction('size_t', mesh, mesh.geometry().dim())
                 for ci in affected_cell_indices:
-                    subdomain.set_value(ci, 1)
-                submesh = df.SubMesh(mesh, subdomain, 1)
+                    subdomain.set_value(ci, 42)
+                submesh = df.SubMesh(mesh, subdomain, 42)
 
                 # build restricted form
                 self.logger.info('Building UFL form on submesh ...')
                 V_r_source = df.FunctionSpace(submesh, self.source.V.ufl_element())
                 V_r_range = df.FunctionSpace(submesh, self.range.V.ufl_element())
+                v_r = df.TestFunction(V_r_range)
+                integral = self.form.integrals()[0]  # assume all integrals have same metadata
+                md = integral.metadata()
+                dx_r = df.dx(metadata=md)
+                material_r = type(self.material)(submesh, self.material.degree, **self.material.kwargs)
+                form_r = material_r.get_nonaffine_form(v_r, dx_r(domain=submesh))
                 assert V_r_source.dim() == len(source_dofs)
 
-                if self.source.V != self.range.V:
-                    assert all(arg.ufl_function_space() != self.source.V for arg in self.form.arguments())
-                args = tuple((df.function.argument.Argument(V_r_range, arg.number(), arg.part())
-                              if arg.ufl_function_space() == self.range.V else arg)
-                             for arg in self.form.arguments())
-                if any(isinstance(coeff, df.Function) and coeff != self.source_function for coeff in
-                       self.form.coefficients()):
-                    raise NotImplementedError
-                source_function_r = df.Function(V_r_source)
-                form_r = ufl.replace_integral_domains(
-                    self.form(*args, coefficients={self.source_function: source_function_r}),
-                    submesh.ufl_domain()
-                )
                 if self.dirichlet_bc:
+                    bc_r = list()
                     bc = self.dirichlet_bc
-                    if not bc.user_subdomain():
-                        raise NotImplementedError
-                    bc_r = df.DirichletBC(V_r_source, bc.value(), bc.user_subdomain(), bc.method())
+                    for bc in self.dirichlet_bc:
+                        if not bc.user_subdomain():
+                            raise NotImplementedError
+                        bc_r.append(df.DirichletBC(V_r_source, bc.value(), bc.user_subdomain(), bc.method()))
                 else:
                     bc_r = None
 
