@@ -17,7 +17,7 @@ class HistoryMaterial:
     Attributes
     ----------
         dim                     Spatial dimension of the problem.
-        quad_deg                Quadrature degree.
+        degree                  Quadrature degree.
         scalar_space            Scalar quadrature space.
         tensor_space            Tensor valued quadrature space.
         history_variables       Dict holding history variables.
@@ -25,7 +25,7 @@ class HistoryMaterial:
 
     def __init__(self, mesh, degree, scalar_variables, tensor_variables):
         self.dim = mesh.topology().dim()
-        self.quad_deg = degree
+        self.degree = degree
         self.scalar_variables = scalar_variables
         self.tensor_variables = tensor_variables
         FE = df.FiniteElement("Quadrature", mesh.ufl_cell(), degree=degree,
@@ -37,9 +37,9 @@ class HistoryMaterial:
 
     def local_project(self, v, V, u=None):
         """project v onto V and store the values in u"""
-        if self.quad_deg > 1:  # use this because of bug in uflacs representation ...
+        if self.degree > 1:  # use this because of bug in uflacs representation ...
             df.parameters["form_compiler"]["representation"] = "quadrature"
-        metadata = {"quadrature_degree": self.quad_deg, "quadrature_scheme": "default"}
+        metadata = {"quadrature_degree": self.degree, "quadrature_scheme": "default"}
         dx = df.dx(metadata=metadata)
         v_trial = df.TrialFunction(V)
         v_test = df.TestFunction(V)
@@ -50,12 +50,12 @@ class HistoryMaterial:
         if u is None:
             u = df.Function(V)
             solver.solve_local_rhs(u)
-            if self.quad_deg > 1:
+            if self.degree > 1:
                 df.parameters["form_compiler"]["representation"] = "uflacs"
             return u
         else:
             solver.solve_local_rhs(u)
-            if self.quad_deg > 1:
+            if self.degree > 1:
                 df.parameters["form_compiler"]["representation"] = "uflacs"
             return
 
