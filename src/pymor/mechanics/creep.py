@@ -43,33 +43,46 @@ class ParametricKelvinChain(Parametric, HistoryMaterial):
     ----------
         mesh                    Partition of the domain Ω.
         degree                  Quadrature degree.
-        num_kelvin_elements=3   Number of Kelvin elements.
-        NU=0.3                  Poisson ratio.
-        plane_stress=False      Constraints to be used in 2d case.
-        parameter_setter=None   Function to set parameters.
-        parameter_type=None     The parameter type to use.
+        parameters              A dict containing all material parameters.
 
     Attributes
     ----------
         dim                     Spatial dimension of the problem.
-        num_kelvin_elements     See Parameters.
-        stiffness_moduli        Elastic moduli of Kelvin elements.
+        nkelem                  Number of kelvin elements.
+        stiffness_moduli        Elastic moduli of kelvin elements.
         tau                     Retardation times.
-        _dt                     See Parameters
+        E0                      Zero-th spring stiffness.
+        dt                      Time step.
+        plane_stress            Constraints to use in 2d case.
+        parameter_setter        A function to set parameter value µ.
+        parameter_type          Type of µ.
         lambda_1                First LAME constant (lambda).
         lambda_2                Second LAME constant (mu).
         scalar_space            Scalar quadrature space.
         tensor_space            Tensor valued quadrature space.
-        history_variables       Dict holding history variables.
+        history_variables       A dict holding all history variables.
+        parameters              A dict containing all material parameters.
     """
 
-    def __init__(self, mesh, degree, nkelvinelem=3, plane_stress=False,
-                 parameter_setter=None, parameter_type=None):
-        self.num_kelvin_elements = nkelvinelem
-        self._stiffness_moduli = ()
-        self._tau = np.zeros(self.num_kelvin_elements)
+    def __init__(self, mesh, degree, parameters=None):
+        # TODO: ensure user specifies parameters correctly?
+        assert isinstance(parameters['stiffness_moduli'], tuple)
+        for m in parameters['stiffness_moduli']:
+            assert isinstance(m, df.function.constant.Constant)
+        for k in ('E0', 'dt'):
+            assert isinstance(parameters[k], df.function.constant.Constant)
+
+        self.nkelem = parameters.get('nkelem', 3)
+        self.stiffness_moduli = parameters.get('stiffness_moduli')
+        self.tau = parameters.get('tau', [3.0, 20.0, 40.0])
+        self.E0 = parameters.get('E0')
+        self.dt = parameters.get('dt')
+        self.plane_stress = parameters.get('plane_stress', False)
+        self.parameter_setter = parameters.get('parameter_setter', None)
+        parameter_type = parameters.get('parameter_type', None)
+        self.build_parameter_type(parameter_type)
         scalar_variables = []
-        tensor_variables = ["sigma", "eps", "eps_prev", "csi"] + [f"gamma_{i}" for i in range(self.num_kelvin_elements)]
+        tensor_variables = ["sigma", "eps", "eps_prev", "csi"] + [f"gamma_{i}" for i in range(self.nkelem)]
         super().__init__(mesh, degree, scalar_variables, tensor_variables)
         self.initialize_history_variables()
         if self.dim == 1:
@@ -78,74 +91,26 @@ class ParametricKelvinChain(Parametric, HistoryMaterial):
             NU = 0.3
         self.lambda_1 = NU / ((1.0 + NU) * (1.0 - 2.0 * NU))
         self.lambda_2 = 1.0 / 2.0 / (1.0 + NU)
-        self.plane_stress = plane_stress
-        self.parameter_setter = parameter_setter
-        self.build_parameter_type(parameter_type)
-        self.kwargs = {
-            'nkelvinelem': self.num_kelvin_elements,
-            'plane_stress': self.plane_stress,
-            'parameter_setter': self.parameter_setter,
-            'parameter_type': parameter_type
-        }
+        self.parameters = parameters
+
         #  use like this:
         #  material = ParametricKelvinChain(mesh, degree, plane_stress=True)
-        #  mat_r = type(material)(submesh, material.degree, **material.kwargs)
+        #  mat_r = type(material)(submesh, material.degree, parameters=material.parameters)
 
     def _set_mu(self, mu=None):
         mu = self.parse_parameter(mu)
         if self.parameter_setter:
             self.parameter_setter(mu)
 
-    @property
-    def stiffness_moduli(self):
-        return self._stiffness_moduli
-
-    @stiffness_moduli.setter
-    def stiffness_moduli(self, moduli):
-        assert isinstance(moduli, tuple)
-        assert len(moduli) == self.num_kelvin_elements
-        for D in moduli:
-            assert isinstance(D, df.function.constant.Constant)
-        self._stiffness_moduli = moduli
-
-    @property
-    def tau(self):
-        return self._tau
-
-    @tau.setter
-    def tau(self, values):
-        assert len(values) == self.num_kelvin_elements
-        self._tau = np.array(values)
-
-    @property
-    def E0(self):
-        """zero-th spring stiffness"""
-        return self._E0
-
-    @E0.setter
-    def E0(self, E):
-        assert isinstance(E, df.function.constant.Constant)
-        self._E0 = E
-
-    @property
-    def dt(self):
-        """time step as parameter"""
-        return self._dt
-
-    @dt.setter
-    def dt(self, t):
-        assert isinstance(t, df.function.constant.Constant)
-        self._dt = t
-
     def get_beta(self):
-        assert np.sum(self._tau) > 0, "You should set retardation times."
-        assert float(self._dt) > 0, "You should set a time step dt."
-        B = [df.exp(-self._dt / self._tau[i]) for i in range(self.num_kelvin_elements)]
+        assert np.sum(self.tau) > 0, "You should set retardation times."
+        assert float(self.dt) > 0, "You should set a time step dt."
+        B = [df.exp(-self.dt / self.tau[i]) for i in range(self.nkelem)]
         return B
 
     def get_lambda(self):
         B = self.get_beta()
-        L = [self._tau[i] * (1 - B[i]) / self._dt for i in range(self.num_kelvin_elements)]
+        L = [self.tau[i] * (1 - B[i]) / self.dt for i in range(self.nkelem)]
         return L
 
     def get_effective_stiffness(self, mu=None):
@@ -153,9 +118,9 @@ class ParametricKelvinChain(Parametric, HistoryMaterial):
             self._set_mu(mu)
         lmbd = self.get_lambda()
         chain_compliance = 0
-        for i in range(self.num_kelvin_elements):
-            chain_compliance += (1.0 - lmbd[i]) / self._stiffness_moduli[i]
-        compliance = 1 / self._E0 + chain_compliance
+        for i in range(self.nkelem):
+            chain_compliance += (1.0 - lmbd[i]) / self.stiffness_moduli[i]
+        compliance = 1 / self.E0 + chain_compliance
         return 1 / compliance
 
     def Cx(self, E):
@@ -232,8 +197,8 @@ class ParametricKelvinChain(Parametric, HistoryMaterial):
         csi = 0
         beta = self.get_beta()
         get_lambda = self.get_lambda()
-        stiffness_moduli = self._stiffness_moduli
-        for i in range(self.num_kelvin_elements):
+        stiffness_moduli = self.stiffness_moduli
+        for i in range(self.nkelem):
             new_gamma = (float(get_lambda[i]) * float(self.get_effective_stiffness(mu)) / stiffness_moduli[i] * (
                 self.history_variables["eps"]
                 - self.history_variables["eps_prev"]

@@ -228,7 +228,7 @@ if config.HAVE_FENICS:
                      dirichlet_bc=None, parameter_setter=None, parameter_type=None,
                      solver_options=None, restriction_method='assemble_local', name=None):
             assert restriction_method in ('assemble_local', 'submesh')
-            assert material is None or hasattr(material, 'update_history')
+            assert material is None or hasattr(material, 'update_history') and hasattr(material, 'get_nonaffine_form')
             assert isinstance(dirichlet_bc, list) or dirichlet_bc is None
             self.form = form
             self.source = source_space
@@ -358,7 +358,7 @@ if config.HAVE_FENICS:
                 integral = self.form.integrals()[0]  # assume all integrals have same metadata
                 md = integral.metadata()
                 dx_r = df.dx(metadata=md)
-                material_r = type(self.material)(submesh, self.material.degree, **self.material.kwargs)
+                material_r = type(self.material)(submesh, self.material.degree, parameters=self.material.parameters)
                 form_r = material_r.get_nonaffine_form(v_r, dx_r(domain=submesh))
                 assert V_r_source.dim() == len(source_dofs)
 
