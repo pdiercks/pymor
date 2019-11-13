@@ -19,6 +19,8 @@ class MechanicsEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator):
             assert isinstance(assembled_basis, VectorArrayInterface)
             self.assembled_basis = assembled_basis.copy()
             triangular = False  # interpolation matrix will not be triangular for UDEIM
+        else:
+            self.assembled_basis = assembled_basis
         super().__init__(operator, interpolation_dofs, collateral_basis, triangular,
                          solver_options=solver_options, name=name)
 
@@ -28,8 +30,18 @@ class MechanicsEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator):
             return self.range.zeros(len(U))
 
         if hasattr(self, 'restricted_operator'):
-            # assert U in self.operator.op.source # should be DG space
-            # restricted_operator.source.random()
+            # TODO: in case of UDEIM would need U in DG space = self.operator.op.source
+            # FIXME: but U will normally be in CG space regardless of DEIM variant
+            # Option (1) projection: (projection is bad ... operation on whole mesh)
+            #  input: some U in CG space V
+            #  u = df.Function(U.space.V)
+            #  u.vector().set_local(U._list[0].impl)
+            #  u_proj = df.project(u, self.operator.op.source.V)
+            #  U_DG = self.operator.op.source.make_array([u_proj.vector()])
+            #
+            # Option (2): provide self.source_dofs in terms of CG dofs
+            # compute a mapping between dofs in DG space and CG space in restricted method
+
             U_dofs = NumpyVectorSpace.make_array(U.dofs(self.source_dofs))
             AU = self.restricted_operator.apply(U_dofs, mu=mu)
         else:
