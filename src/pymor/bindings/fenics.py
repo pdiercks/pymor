@@ -214,6 +214,7 @@ if config.HAVE_FENICS:
         @defaults('restriction_method')
         def __init__(self, form, source_space, range_space, source_function, dirichlet_bc=None,
                      parameter_setter=None, parameter_type=None, solver_options=None,
+                     jacobian_options=None,
                      restriction_method='submesh', name=None):
             assert restriction_method in ('assemble_local', 'submesh')
             assert len(form.arguments()) == 1
@@ -224,6 +225,7 @@ if config.HAVE_FENICS:
             self.dirichlet_bc = dirichlet_bc
             self.parameter_setter = parameter_setter
             self.build_parameter_type(parameter_type)
+            self.jacobian_options = jacobian_options
             self.solver_options = solver_options
             self.restriction_method = restriction_method
             self.name = name
@@ -254,7 +256,11 @@ if config.HAVE_FENICS:
             matrix = df.assemble(df.derivative(self.form, self.source_function))
             if self.dirichlet_bc:
                 self.dirichlet_bc.apply(matrix)
-            return FenicsMatrixOperator(matrix, self.source.V, self.range.V)
+            # TODO: what about passing solver_options here to FenicsMatrixOperator?
+            # might not want to use the default solver options in newton.py
+            # correction = jacobian.apply_inverse(residual, least_squares=least_squares)
+            return FenicsMatrixOperator(matrix, self.source.V, self.range.V,
+                                        solver_options=self.jacobian_options)
 
         def restricted(self, dofs):
             assert self.source.V.mesh().id() == self.range.V.mesh().id()
@@ -551,25 +557,47 @@ if config.HAVE_FENICS:
                 If `True`, block execution until the plot window is closed.
             """
             if filename:
-                assert not isinstance(U, tuple)
-                assert U in self.space
-                f = df.File(filename)
-                coarse_function = df.Function(self.space.V)
-                if self.mesh_refinements:
-                    mesh = self.space.V.mesh()
-                    for _ in range(self.mesh_refinements):
-                        mesh = df.refine(mesh)
-                    V_fine = df.FunctionSpace(mesh, self.space.V.ufl_element())
-                    function = df.Function(V_fine)
-                else:
-                    function = coarse_function
-                if legend:
-                    function.rename(legend, legend)
-                for u in U._list:
-                    coarse_function.vector()[:] = u.impl
+                name, ext = filename.split('.')
+                if ext == 'xdmf':# add all VectorArrays to one xdmf file
                     if self.mesh_refinements:
-                        function.vector()[:] = df.interpolate(coarse_function, V_fine).vector()
-                    f << function
+                        raise NotImplementedError
+                    assert U in self.space and len(U) == 1 or isinstance(U, tuple)
+                    assert legend is not None
+                    if not isinstance(U, tuple):
+                        U = (U,)
+                    if isinstance(legend, str):
+                        legend = (legend,)
+                    f = df.XDMFFile(filename)
+                    f.parameters["functions_share_mesh"] = True
+                    f.parameters["rewrite_function_mesh"] = False
+                    f.parameters["flush_output"] = True
+
+                    for (array, l) in zip(U, legend):
+                        function = df.Function(self.space.V, name=l)
+                        for (time, u) in enumerate(array._list):
+                            function.vector()[:] = u.impl
+                            f.write(function, time)
+
+                else:
+                    assert not isinstance(U, tuple)
+                    assert U in self.space
+                    f = df.File(filename)
+                    coarse_function = df.Function(self.space.V)
+                    if self.mesh_refinements:
+                        mesh = self.space.V.mesh()
+                        for _ in range(self.mesh_refinements):
+                            mesh = df.refine(mesh)
+                        V_fine = df.FunctionSpace(mesh, self.space.V.ufl_element())
+                        function = df.Function(V_fine)
+                    else:
+                        function = coarse_function
+                    if legend:
+                        function.rename(legend, legend)
+                    for u in U._list:
+                        coarse_function.vector()[:] = u.impl
+                        if self.mesh_refinements:
+                            function.vector()[:] = df.interpolate(coarse_function, V_fine).vector()
+                        f << function
             else:
                 from matplotlib import pyplot as plt
 
