@@ -199,7 +199,6 @@ if config.HAVE_FENICS:
                 return None
             if identity_shift != 0:
                 return None
-            #  assert not solver_options # TODO why is this a good idea?
 
             if coefficients[0] == 1:
                 matrix = operators[0].matrix.copy()
@@ -209,7 +208,7 @@ if config.HAVE_FENICS:
                 matrix.axpy(c, op.matrix, False)
                 # we cannot assume the same nonzero pattern for # all matrices. how to improve this?
 
-            return FenicsMatrixOperator(matrix, self.source.V, self.range.V, name=name)
+            return FenicsMatrixOperator(matrix, self.source.V, self.range.V, solver_options=solver_options, name=name)
 
     class FenicsOperator(OperatorBase):
         """Wraps a FEniCS form as an |Operator|."""
