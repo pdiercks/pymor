@@ -80,12 +80,14 @@ if config.HAVE_FENICS:
             if not mpi.parallel:
                 return max_ind_on_rank, max_val_on_rank
             else:
-                max_global_ind_on_rank = max_ind_on_rank + self.impl.local_range()[0]
+                max_global_ind_on_rank = max_ind_on_rank + \
+                    self.impl.local_range()[0]
                 comm = self.impl.mpi_comm()
                 comm_size = comm.Get_size()
 
                 max_inds = np.empty(comm_size, dtype='i')
-                comm.Allgather(np.array(max_global_ind_on_rank, dtype='i'), max_inds)
+                comm.Allgather(
+                    np.array(max_global_ind_on_rank, dtype='i'), max_inds)
 
                 max_vals = np.empty(comm_size, dtype=np.float64)
                 comm.Allgather(np.array(max_val_on_rank), max_vals)
@@ -145,7 +147,8 @@ if config.HAVE_FENICS:
 
         def random_vector(self, distribution, random_state, **kwargs):
             impl = df.Function(self.V).vector()
-            values = _create_random_values(impl.local_size(), distribution, random_state, **kwargs)
+            values = _create_random_values(
+                impl.local_size(), distribution, random_state, **kwargs)
             impl[:] = values
             return FenicsVector(impl)
 
@@ -176,7 +179,8 @@ if config.HAVE_FENICS:
             assert V in self.range
             U = self.source.zeros(len(V))
             for v, u in zip(V._list, U._list):
-                self.matrix.transpmult(v.impl, u.impl)  # there are no complex numbers in FEniCS
+                # there are no complex numbers in FEniCS
+                self.matrix.transpmult(v.impl, u.impl)
             return U
 
         def apply_inverse(self, V, mu=None, least_squares=False):
@@ -184,7 +188,8 @@ if config.HAVE_FENICS:
             if least_squares:
                 raise NotImplementedError
             R = self.source.zeros(len(V))
-            options = self.solver_options.get('inverse') if self.solver_options else None
+            options = self.solver_options.get(
+                'inverse') if self.solver_options else None
             for r, v in zip(R._list, V._list):
                 _apply_inverse(self.matrix, r.impl, v.impl, options)
             return R
@@ -202,7 +207,7 @@ if config.HAVE_FENICS:
                 matrix = operators[0].matrix * coefficients[0]
             for op, c in zip(operators[1:], coefficients[1:]):
                 matrix.axpy(c, op.matrix, False)
-                # in general, we cannot assume the same nonzero pattern for # all matrices. how to improve this?
+                # we cannot assume the same nonzero pattern for # all matrices. how to improve this?
 
             return FenicsMatrixOperator(matrix, self.source.V, self.range.V, name=name)
 
@@ -253,7 +258,8 @@ if config.HAVE_FENICS:
             self._set_mu(mu)
             source_vec = self.source_function.vector()
             source_vec[:] = U._list[0].impl
-            matrix = df.assemble(df.derivative(self.form, self.source_function))
+            matrix = df.assemble(df.derivative(
+                self.form, self.source_function))
             if self.dirichlet_bc:
                 self.dirichlet_bc.apply(matrix)
             # TODO: what about passing solver_options here to FenicsMatrixOperator?
@@ -278,7 +284,8 @@ if config.HAVE_FENICS:
                         affected_cell_indices.add(cell_index)
                         continue
             affected_cell_indices = list(sorted(affected_cell_indices))
-            affected_cells = [df.Cell(mesh, ci) for ci in affected_cell_indices]
+            affected_cells = [df.Cell(mesh, ci)
+                              for ci in affected_cell_indices]
 
             # increase stencil if needed
             # TODO
@@ -305,7 +312,7 @@ if config.HAVE_FENICS:
                 to_restricted[:] = len(source_dofs)
                 to_restricted[source_dofs] = np.arange(len(source_dofs))
                 source_local_restricted = np.array([to_restricted[source_dofmap.cell_dofs(ci)]
-                                                   for ci in affected_cell_indices])
+                                                    for ci in affected_cell_indices])
 
                 # compute dirichlet DOFs
                 if self.dirichlet_bc:
@@ -317,8 +324,10 @@ if config.HAVE_FENICS:
                     v2[:] = 0
                     self.dirichlet_bc.apply(v1)
                     self.dirichlet_bc.apply(v2)
-                    dir_dofs = [i for i in range(self.source.dim) if (v1[i] != 42) or (v2[i] != 0)]
-                    dir_dofs_r, dir_vals_r = zip(*((i, v1[dof]) for i, dof in enumerate(dofs) if dof in dir_dofs))
+                    dir_dofs = [i for i in range(self.source.dim) if (
+                        v1[i] != 42) or (v2[i] != 0)]
+                    dir_dofs_r, dir_vals_r = zip(
+                        *((i, v1[dof]) for i, dof in enumerate(dofs) if dof in dir_dofs))
                     dir_dofs_r = np.array(dir_dofs_r, dtype=np.int32)
                     dir_vals_r = np.array(dir_vals_r)
                     dir_dofs_r_source = to_restricted[dofs[dir_dofs_r]]
@@ -337,19 +346,23 @@ if config.HAVE_FENICS:
             elif self.restriction_method == 'submesh':
                 # generate restricted spaces
                 self.logger.info('Building submesh ...')
-                subdomain = df.MeshFunction('size_t', mesh, mesh.geometry().dim())
+                subdomain = df.MeshFunction(
+                    'size_t', mesh, mesh.geometry().dim())
                 for ci in affected_cell_indices:
                     subdomain.set_value(ci, 1)
                 submesh = df.SubMesh(mesh, subdomain, 1)
 
                 # build restricted form
                 self.logger.info('Building UFL form on submesh ...')
-                V_r_source = df.FunctionSpace(submesh, self.source.V.ufl_element())
-                V_r_range = df.FunctionSpace(submesh, self.range.V.ufl_element())
+                V_r_source = df.FunctionSpace(
+                    submesh, self.source.V.ufl_element())
+                V_r_range = df.FunctionSpace(
+                    submesh, self.range.V.ufl_element())
                 assert V_r_source.dim() == len(source_dofs)
 
                 if self.source.V != self.range.V:
-                    assert all(arg.ufl_function_space() != self.source.V for arg in self.form.arguments())
+                    assert all(arg.ufl_function_space()
+                               != self.source.V for arg in self.form.arguments())
                 args = tuple((df.function.argument.Argument(V_r_range, arg.number(), arg.part())
                               if arg.ufl_function_space() == self.range.V else arg)
                              for arg in self.form.arguments())
@@ -358,14 +371,16 @@ if config.HAVE_FENICS:
                     raise NotImplementedError
                 source_function_r = df.Function(V_r_source)
                 form_r = ufl.replace_integral_domains(
-                    self.form(*args, coefficients={self.source_function: source_function_r}),
+                    self.form(
+                        *args, coefficients={self.source_function: source_function_r}),
                     submesh.ufl_domain()
                 )
                 if self.dirichlet_bc:
                     bc = self.dirichlet_bc
                     if not bc.user_subdomain():
                         raise NotImplementedError
-                    bc_r = df.DirichletBC(V_r_source, bc.value(), bc.user_subdomain(), bc.method())
+                    bc_r = df.DirichletBC(
+                        V_r_source, bc.value(), bc.user_subdomain(), bc.method())
                 else:
                     bc_r = None
 
@@ -385,7 +400,8 @@ if config.HAVE_FENICS:
                     if not len(r_dof) == 1:
                         raise NotImplementedError
                     restricted_source_dofs.append(r_dof[0])
-                restricted_source_dofs = np.array(restricted_source_dofs, dtype=np.int32)
+                restricted_source_dofs = np.array(
+                    restricted_source_dofs, dtype=np.int32)
                 assert len(set(restricted_source_dofs)) == len(source_dofs)
 
                 # source dof mapping
@@ -404,7 +420,8 @@ if config.HAVE_FENICS:
                     if not len(r_dof) == 1:
                         raise NotImplementedError
                     restricted_range_dofs.append(r_dof[0])
-                restricted_range_dofs = np.array(restricted_range_dofs, dtype=np.int32)
+                restricted_range_dofs = np.array(
+                    restricted_range_dofs, dtype=np.int32)
 
                 op_r = FenicsOperator(form_r, FenicsVectorSpace(V_r_source), FenicsVectorSpace(V_r_range),
                                       source_function_r, dirichlet_bc=bc_r, parameter_setter=self.parameter_setter,
@@ -445,7 +462,8 @@ if config.HAVE_FENICS:
                 for cell, local_restricted in zip(self.cells, self.range_local_restricted):
                     local_evaluations = df.assemble_local(operator.form, cell)
                     r[local_restricted] += local_evaluations
-                r[self.dirichlet_dofs] = u[self.dirichlet_source_dofs] - self.dirichlet_values
+                r[self.dirichlet_dofs] = u[self.dirichlet_source_dofs] - \
+                    self.dirichlet_values
             return self.range.make_array(R[:, :-1])
 
         def jacobian(self, U, mu=None):
@@ -458,10 +476,13 @@ if config.HAVE_FENICS:
             for cell, range_local_restricted, source_local_restricted in zip(self.cells,
                                                                              self.range_local_restricted,
                                                                              self.source_local_restricted):
-                local_matrix = df.assemble_local(df.derivative(operator.form, operator.source_function), cell)
-                J[np.meshgrid(range_local_restricted, source_local_restricted, indexing='ij')] += local_matrix
+                local_matrix = df.assemble_local(df.derivative(
+                    operator.form, operator.source_function), cell)
+                J[np.meshgrid(
+                    range_local_restricted, source_local_restricted, indexing='ij')] += local_matrix
             J[self.dirichlet_dofs, :] = 0.
-            J[np.meshgrid(self.dirichlet_dofs, self.dirichlet_source_dofs, indexing='ij')] = 1.
+            J[np.meshgrid(self.dirichlet_dofs,
+                          self.dirichlet_source_dofs, indexing='ij')] = 1.
             return NumpyMatrixOperator(J[:-1, :-1])
 
         def restricted(self, dofs):
@@ -553,10 +574,11 @@ if config.HAVE_FENICS:
             """
             if filename:
                 name, ext = filename.split('.')
-                if ext == 'xdmf':# add all VectorArrays to one xdmf file
+                if ext == 'xdmf':  # add all VectorArrays to one xdmf file
                     if self.mesh_refinements:
                         raise NotImplementedError
-                    assert U in self.space and len(U) == 1 or isinstance(U, tuple)
+                    assert U in self.space and len(
+                        U) == 1 or isinstance(U, tuple)
                     assert legend is not None
                     if not isinstance(U, tuple):
                         U = (U,)
@@ -582,7 +604,8 @@ if config.HAVE_FENICS:
                         mesh = self.space.V.mesh()
                         for _ in range(self.mesh_refinements):
                             mesh = df.refine(mesh)
-                        V_fine = df.FunctionSpace(mesh, self.space.V.ufl_element())
+                        V_fine = df.FunctionSpace(
+                            mesh, self.space.V.ufl_element())
                         function = df.Function(V_fine)
                     else:
                         function = coarse_function
@@ -591,7 +614,8 @@ if config.HAVE_FENICS:
                     for u in U._list:
                         coarse_function.vector()[:] = u.impl
                         if self.mesh_refinements:
-                            function.vector()[:] = df.interpolate(coarse_function, V_fine).vector()
+                            function.vector()[:] = df.interpolate(
+                                coarse_function, V_fine).vector()
                         f << function
             else:
                 from matplotlib import pyplot as plt

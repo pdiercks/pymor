@@ -113,7 +113,7 @@ def pod(A, modes=None, product=None, rtol=4e-8, atol=0., l2_err=0.,
         POD = A.lincomb(EVECS / SVALS[:, np.newaxis])
 
         if return_svecs:
-            data['svecs'] = EVECS / SVALS[:, np.newaxis]# return right-singular vectors
+            data['svecs'] = EVECS / SVALS[:, np.newaxis]  # return right-singular vectors
 
     if orthonormalize:
         with logger.block('Re-orthonormalizing POD modes ...'):

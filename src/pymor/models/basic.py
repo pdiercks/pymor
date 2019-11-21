@@ -5,7 +5,6 @@
 from pymor.algorithms.timestepping import TimeStepperInterface
 from pymor.models.interfaces import ModelInterface
 from pymor.operators.constructions import VectorOperator, induced_norm
-from pymor.operators.interfaces import OperatorInterface
 from pymor.tools.frozendict import FrozenDict
 from pymor.vectorarrays.interfaces import VectorArrayInterface
 
@@ -119,8 +118,8 @@ class StationaryModel(ModelBase):
 
         #  assert rhs.range == operator.range and rhs.source.is_scalar and rhs.linear
         assert operator.range and rhs.source.is_scalar and rhs.linear
-        # FIXME: currently (25.06.19, IQP impl) don't want the restriction by including rhs.range in the
-        # assert
+        # FIXME: currently (25.06.19, IQP impl) don't want the restriction by including
+        # rhs.range in the assert
 
         super().__init__(products=products,
                          estimator=estimator, visualizer=visualizer,
@@ -252,7 +251,8 @@ class InstationaryModel(ModelBase):
         self.time_stepper = time_stepper
         self.num_values = num_values
         self.outputs = FrozenDict(outputs or {})
-        self.build_parameter_type(self.initial_data, self.operator, self.rhs, self.mass, provides={'_t': 0})
+        self.build_parameter_type(
+            self.initial_data, self.operator, self.rhs, self.mass, provides={'_t': 0})
         self.parameter_space = parameter_space
 
     def with_time_stepper(self, **kwargs):
