@@ -142,7 +142,6 @@ if config.HAVE_FENICS:
         vector_operators = [VectorOperator(
             range_space.make_array([v])) for v in vector]
 
-        breakpoint()
         return LincombOperator(vector_operators, thetas)
 
     def get_macro_strain_vector_operators(range_space, measure, subdomain_id):
