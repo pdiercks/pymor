@@ -554,7 +554,7 @@ if config.HAVE_FENICS:
                 |VectorArray| of the data to visualize (length must be 1). Alternatively,
                 a tuple of |VectorArrays| which will be visualized in separate windows.
                 If `filename` is specified, only one |VectorArray| may be provided which,
-                however, is allowed to contain multipled vectors that will be interpreted
+                however, is allowed to contain multiple vectors that will be interpreted
                 as a time series.
             m
                 Filled in by :meth:`pymor.models.ModelBase.visualize` (ignored).
@@ -572,12 +572,10 @@ if config.HAVE_FENICS:
                 If `True`, block execution until the plot window is closed.
             """
             if filename:
-                name, ext = filename.split('.')
-                if ext == 'xdmf':  # add all VectorArrays to one xdmf file
+                if filename.endswith('.xdmf'):
                     if self.mesh_refinements:
                         raise NotImplementedError
-                    assert U in self.space and len(
-                        U) == 1 or isinstance(U, tuple)
+                    assert U in self.space or isinstance(U, tuple)
                     assert legend is not None
                     if not isinstance(U, tuple):
                         U = (U,)

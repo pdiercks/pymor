@@ -53,7 +53,7 @@ if config.HAVE_FENICS:
         if not isinstance(inclusion_id, tuple):
             inclusion_id = (inclusion_id,)
         subdomain_ids = (matrix_id,) + inclusion_id
-        assert subdomain_ids[0] > 0, "marking should start from 1, which is usually the case for gmsh-generated meshes"
+        assert subdomain_ids[0] == 1, "marking should start from 1, which is usually the case for gmsh-generated meshes"
 
         NOMEGA = len(subdomain_ids)
         shapes = {'EPS': ((3,), (6,)), 'E': ((NOMEGA,),), 'NU': ((NOMEGA,),)}
