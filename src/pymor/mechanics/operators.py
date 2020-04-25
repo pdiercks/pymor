@@ -228,7 +228,7 @@ if config.HAVE_FENICS:
                      dirichlet_bc=None, parameter_setter=None, parameter_type=None,
                      solver_options=None, restriction_method='assemble_local', name=None):
             assert restriction_method in ('assemble_local', 'submesh')
-            assert material is None or hasattr(material, 'update_history') and hasattr(material, 'get_nonaffine_form')
+            assert material is None or (hasattr(material, 'update_history') and hasattr(material, 'get_nonaffine_form'))
             assert isinstance(dirichlet_bc, list) or dirichlet_bc is None
             self.form = form
             self.source = source_space

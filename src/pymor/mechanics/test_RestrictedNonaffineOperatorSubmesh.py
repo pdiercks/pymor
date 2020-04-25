@@ -127,7 +127,7 @@ def main(args):
     dim = operator.range.dim
     u.vector()[:] = np.random.rand(dim)
 
-    u_r = df.interpolate(u, restricted_operator.op.range.V)
+    u_r = df.interpolate(u, restricted_operator.op.range.V)  # interpolate u from CG space onto reduced CG space
     u_err = u.vector()[dofs] - u_r.vector()[restricted_range_dofs]
     assert np.allclose(u_err, 0.0)
 

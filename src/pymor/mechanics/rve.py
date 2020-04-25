@@ -14,7 +14,8 @@ if config.HAVE_FENICS:
         ProductParameterFunctional
     )
 
-    def get_linear_elastic_macro_strain_operator(range_space, parameter_type, measure, subdomain_ids):
+    def get_linear_elastic_macro_strain_operator(range_space, parameter_type, measure, subdomain_ids,
+                                                 material_parameters=None):
         r"""Returns a |LincombOperator| which represents the parameter separated form of
 
         .. math::
@@ -22,12 +23,37 @@ if config.HAVE_FENICS:
             C = \lambda^1(\mu) \mathbf{1} \otimes \mathbf{1} + 2 \lambda^2(\mu)
             \overset{<4>}{\mathbf{1}}
 
-        and the 6 independent components of the macroscopic strain :math:`E(\mu)`
-        and young's modulus and poisson ratio of the material are used as parameters, such that
-        Lame's constants are parameter fuctionals.
+        Parameters
+        ----------
+        range_space
+            The range space of the operator to be constructed.
+        parameter_type
+            The |ParameterType| of the macro strain operator, namely
+            {'EPS': (3,), 'E': (N,), 'NU: (N,)} or possibly without E and NU
+            as parameters.
+        measure
+            The ufl.measure.Measure used for the RVE problem.
+        subdomain_ids
+            A tuple containing the id for all subdomains.
+        material_parameters
+            A of dict containing material parameters for each subdomain.
+            {'matrix': {'E': float, 'NU': float}, 'inclusion': {'E': (N,), 'NU':(N,)}}
+
         """
-        assert isinstance(subdomain_ids, tuple)
-        assert subdomain_ids[0] > 0, "marking should start from 1, which is usually the case for gmsh-generated meshes"
+        assert material_parameters is None or isinstance(material_parameters, dict)
+        assert isinstance(subdomain_ids, dict)
+        if material_parameters:
+            assert len(subdomain_ids.keys()) == len(material_parameters.keys())
+            for key in material_parameters.keys():
+                assert key in ('matrix', 'inclusion')
+                for subkey in material_parameters[key].keys():
+                    assert subkey in ('E', 'NU')
+        matrix_id = subdomain_ids['matrix']
+        inclusion_id = subdomain_ids['inclusion']
+        if not isinstance(inclusion_id, tuple):
+            inclusion_id = (inclusion_id,)
+        subdomain_ids = (matrix_id,) + inclusion_id
+        assert subdomain_ids[0] == 1, "marking should start from 1, which is usually the case for gmsh-generated meshes"
 
         NOMEGA = len(subdomain_ids)
         shapes = {'EPS': ((3,), (6,)), 'E': ((NOMEGA,),), 'NU': ((NOMEGA,),)}
@@ -41,7 +67,7 @@ if config.HAVE_FENICS:
         gdim = range_space.V.mesh().geometric_dimension()
         assert gdim in (2, 3)
 
-        pt = parameter_type
+        pt = parameter_type  # E and NU are optional parameters
         for k in pt.keys():
             assert k in ('EPS', 'E', 'NU')
             assert pt[k] in shapes[k]
@@ -61,11 +87,24 @@ if config.HAVE_FENICS:
         thetas = []
 
         for ID in subdomain_ids:
-            # ### Lame constants as parameter functionals
-            L = ExpressionParameterFunctional(
-                f"E[{int(ID-1)}] * NU[{int(ID-1)}] / ((1.0 + NU[{int(ID-1)}]) * (1.0 - 2.0 * NU[{int(ID-1)}]))",
-                pt)  # lambda
-            M = ExpressionParameterFunctional(f"E[{int(ID-1)}] / 2.0 / (1.0 + NU[{int(ID-1)}])", pt)       # mu
+            # ### Lame constants as parameter functionals OR numbers
+            if material_parameters:
+                if ID == 1:
+                    d = material_parameters['matrix']
+                    E = d['E']
+                    NU = d['NU']
+                else:
+                    d = material_parameters['inclusion']
+                    E = d['E'][int(ID - 2)]
+                    NU = d['NU'][int(ID - 2)]
+                L = E * NU / ((1.0 + NU) * (1.0 - 2.0 * NU))
+                M = E / 2.0 / (1.0 + NU)
+            else:
+                L = ExpressionParameterFunctional(
+                    f"E[{int(ID-1)}] * NU[{int(ID-1)}] / ((1.0 + NU[{int(ID-1)}]) * (1.0 - 2.0 * NU[{int(ID-1)}]))",
+                    pt)  # lambda
+                M = ExpressionParameterFunctional(
+                    f"E[{int(ID-1)}] / 2.0 / (1.0 + NU[{int(ID-1)}])", pt)  # mu
 
             # ### trace of E as parameter functional
             expression = ' + '.join([f'EPS[{i}]' for i in range(gdim)])
@@ -76,7 +115,8 @@ if config.HAVE_FENICS:
 
             # ### µ_ij as parameter functionals
             mu_ij = [ProjectionParameterFunctional(component_name='EPS',
-                                                   component_shape=(pt['EPS'][0],),
+                                                   component_shape=(
+                                                       pt['EPS'][0],),
                                                    coordinates=(c,))
                      for c in range(pt['EPS'][0])]
 
@@ -99,7 +139,8 @@ if config.HAVE_FENICS:
                         vector.append(df.assemble(4.0 * W[i, j] * measure(ID)))
 
         # turn all vectors into VectorOperators
-        vector_operators = [VectorOperator(range_space.make_array([v])) for v in vector]
+        vector_operators = [VectorOperator(
+            range_space.make_array([v])) for v in vector]
 
         return LincombOperator(vector_operators, thetas)
 
@@ -142,8 +183,10 @@ if config.HAVE_FENICS:
         for i in range(gdim):
             for j in range(gdim):
                 if i < j:
-                    vector.append(df.assemble(4.0 * W[i, j] * measure(subdomain_id)))
+                    vector.append(df.assemble(
+                        4.0 * W[i, j] * measure(subdomain_id)))
 
         # turn all vectors into VectorOperators
-        vector_operators = [VectorOperator(range_space.make_array([v])) for v in vector]
+        vector_operators = [VectorOperator(
+            range_space.make_array([v])) for v in vector]
         return vector_operators

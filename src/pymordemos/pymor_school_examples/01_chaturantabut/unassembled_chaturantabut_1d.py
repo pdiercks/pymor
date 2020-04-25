@@ -28,16 +28,15 @@ Options:
 
 import sys
 import dolfin as df
-import numpy as np
 import matplotlib.pyplot as plt
 import ufl
 
 # pymor
 from docopt import docopt
-from pymor.algorithms.ei import deim, ei_greedy
-from pymor.algorithms.pod import pod
-from pymor.bindings.fenics import FenicsVectorSpace, FenicsMatrixOperator
-from pymor.bindings.mechanics import MechanicsOperator, MechanicsEmpiricalInterpolatedOperator
+from pymor.algorithms.ei import deim
+from pymor.bindings.fenics import FenicsVectorSpace
+from pymor.mechanics.operators import NonaffineOperator
+from pymor.mechanics.ei import MechanicsEmpiricalInterpolatedOperator
 from pymor.parameters.base import ParameterType
 from pymor.parameters.spaces import CubicParameterSpace
 
@@ -45,6 +44,8 @@ WARNING = 30
 df.set_log_level(WARNING)
 
 # ### helpers
+
+
 def parse_arguments(args):
     args = docopt(__doc__, args)
     args["NELEMENTS"] = int(args["NELEMENTS"])
@@ -54,6 +55,7 @@ def parse_arguments(args):
     args["--rtol"] = float(args["--rtol"])
     return args
 
+
 def discretize_fenics(args):
     degree = args['ORDER']
     mesh = df.IntervalMesh(args['NELEMENTS'], -1.0, 1.0)
@@ -62,7 +64,7 @@ def discretize_fenics(args):
     # ### FE space
     V = df.FunctionSpace(mesh, "Lagrange", degree)
     v = df.TestFunction(V)
-    u = df.TrialFunction(V)
+    #  u = df.TrialFunction(V)
 
     # ### DG space
     DG = df.FunctionSpace(mesh, "DG", degree)
@@ -86,14 +88,15 @@ def discretize_fenics(args):
         m0.assign(df.Constant(float(mu["mu"])))
 
     # ### Operators
-    STD = MechanicsOperator(None, L, FenicsVectorSpace(V),
+    STD = NonaffineOperator(L, FenicsVectorSpace(V),
                             FenicsVectorSpace(V),
+                            material=None,
                             parameter_setter=param_setter,
                             parameter_type=parameter_type,
                             restriction_method='assemble_local')
 
     space = FenicsVectorSpace(DG)
-    UDEIM = MechanicsOperator(None, L_dg, space, space,
+    UDEIM = NonaffineOperator(L_dg, space, space, material=None,
                               parameter_setter=param_setter,
                               parameter_type=parameter_type,
                               restriction_method='assemble_local')
@@ -117,7 +120,6 @@ def main(args):
         B.append(std.apply(U_cg, mu))
 
     print("Performing DEIM algorithm ...")
-    options = {}
     rtol = args['--rtol']
     pod_options = {
         'return_evals': True,
@@ -127,8 +129,8 @@ def main(args):
     basis = B.lincomb(data['svecs'])
 
     EI = MechanicsEmpiricalInterpolatedOperator(udeim, idofs, cb, False,
-                                             assembled_basis=basis)
-    mu = training_set[0]
+                                                assembled_basis=basis)
+    mu = {"mu": 1.17}
     # ### mesh data
     cg_idofs, cg_cb, cd_data = deim(B, rtol=rtol)
     EI_STD = MechanicsEmpiricalInterpolatedOperator(std, cg_idofs, cg_cb, triangular=False)
@@ -149,6 +151,7 @@ def main(args):
     plt.plot(g_dg.to_numpy().flatten(), 'b-o')
     plt.plot(g_exact.to_numpy().flatten(), 'r.-')
     plt.show()
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
