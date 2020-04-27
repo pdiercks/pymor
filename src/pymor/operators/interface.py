@@ -1,0 +1,545 @@
+# This file is part of the pyMOR project (http://www.pymor.org).
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
+# License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
+
+from numbers import Number
+
+import numpy as np
+
+from pymor.algorithms import genericsolvers
+from pymor.core.base import ImmutableObject, abstractmethod
+from pymor.core.exceptions import InversionError, LinAlgError
+from pymor.parameters.base import Parametric
+from pymor.parameters.functionals import ParameterFunctional
+from pymor.vectorarrays.interface import VectorArray
+from pymor.vectorarrays.numpy import NumpyVectorSpace
+
+
+class Operator(ImmutableObject, Parametric):
+    """Interface for |Parameter| dependent discrete operators.
+
+    An operator in pyMOR is simply a mapping which for any given
+    |Parameter| maps vectors from its `source` |VectorSpace|
+    to vectors in its `range` |VectorSpace|.
+
+    Note that there is no special distinction between functionals
+    and operators in pyMOR. A functional is simply an operator with
+    |NumpyVectorSpace| `(1)` as its `range` |VectorSpace|.
+
+    Attributes
+    ----------
+    solver_options
+        If not `None`, a dict which can contain the following keys:
+
+        :'inverse':           solver options used for
+                              :meth:`~Operator.apply_inverse`
+        :'inverse_adjoint':   solver options used for
+                              :meth:`~Operator.apply_inverse_adjoint`
+        :'jacobian':          solver options for the operators returned
+                              by :meth:`~Operator.jacobian`
+                              (has no effect for linear operators)
+
+        If `solver_options` is `None` or a dict entry is missing
+        or `None`, default options are used.
+        The interpretation of the given solver options is up to
+        the operator at hand. In general, values in `solver_options`
+        should either be strings (indicating a solver type) or
+        dicts of options, usually with an entry `'type'` which
+        specifies the solver type to use and further items which
+        configure this solver.
+    linear
+        `True` if the operator is linear.
+    source
+        The source |VectorSpace|.
+    range
+        The range |VectorSpace|.
+    H
+        The adjoint operator, i.e. ::
+
+            self.H.apply(V, mu) == self.apply_adjoint(V, mu)
+
+        for all V, mu.
+    """
+
+    solver_options = None
+
+    @property
+    def H(self):
+        from pymor.operators.constructions import AdjointOperator
+        return AdjointOperator(self)
+
+    @abstractmethod
+    def apply(self, U, mu=None):
+        """Apply the operator to a |VectorArray|.
+
+        Parameters
+        ----------
+        U
+            |VectorArray| of vectors to which the operator is applied.
+        mu
+            The |Parameter| for which to evaluate the operator.
+
+        Returns
+        -------
+        |VectorArray| of the operator evaluations.
+        """
+        pass
+
+    def apply2(self, V, U, mu=None):
+        """Treat the operator as a 2-form by computing ``V.dot(self.apply(U))``.
+
+        If the operator is a linear operator given by multiplication with a matrix
+        M, then `apply2` is given as::
+
+            op.apply2(V, U) = V^T*M*U.
+
+        In the case of complex numbers, note that `apply2` is anti-linear in the
+        first variable by definition of `dot`.
+
+        Parameters
+        ----------
+        V
+            |VectorArray| of the left arguments V.
+        U
+            |VectorArray| of the right right arguments U.
+        mu
+            The |Parameter| for which to evaluate the operator.
+
+        Returns
+        -------
+        A |NumPy array| with shape `(len(V), len(U))` containing the 2-form
+        evaluations.
+        """
+        mu = self.parse_parameter(mu)
+        assert isinstance(V, VectorArray)
+        assert isinstance(U, VectorArray)
+        AU = self.apply(U, mu=mu)
+        return V.dot(AU)
+
+    def pairwise_apply2(self, V, U, mu=None):
+        """Treat the operator as a 2-form by computing ``V.dot(self.apply(U))``.
+
+        Same as :meth:`Operator.apply2`, except that vectors from `V`
+        and `U` are applied in pairs.
+
+        Parameters
+        ----------
+        V
+            |VectorArray| of the left arguments V.
+        U
+            |VectorArray| of the right right arguments U.
+        mu
+            The |Parameter| for which to evaluate the operator.
+
+        Returns
+        -------
+        A |NumPy array| with shape `(len(V),) == (len(U),)` containing
+        the 2-form evaluations.
+        """
+        mu = self.parse_parameter(mu)
+        assert isinstance(V, VectorArray)
+        assert isinstance(U, VectorArray)
+        assert len(U) == len(V)
+        AU = self.apply(U, mu=mu)
+        return V.pairwise_dot(AU)
+
+    def apply_adjoint(self, V, mu=None):
+        """Apply the adjoint operator.
+
+        For any given linear |Operator| `op`, |Parameter| `mu` and
+        |VectorArrays| `U`, `V` in the :attr:`~Operator.source`
+        resp. :attr:`~Operator.range` we have::
+
+            op.apply_adjoint(V, mu).dot(U) == V.dot(op.apply(U, mu))
+
+        Thus, when `op` is represented by a matrix `M`, `apply_adjoint` is
+        given by left-multplication of (the complex conjugate of) `M` with `V`.
+
+        Parameters
+        ----------
+        V
+            |VectorArray| of vectors to which the adjoint operator is applied.
+        mu
+            The |Parameter| for which to apply the adjoint operator.
+
+        Returns
+        -------
+        |VectorArray| of the adjoint operator evaluations.
+        """
+        if self.linear:
+            raise NotImplementedError
+        else:
+            raise LinAlgError('Operator not linear.')
+
+    def apply_inverse(self, V, mu=None, least_squares=False):
+        """Apply the inverse operator.
+
+        Parameters
+        ----------
+        V
+            |VectorArray| of vectors to which the inverse operator is applied.
+        mu
+            The |Parameter| for which to evaluate the inverse operator.
+        least_squares
+            If `True`, solve the least squares problem::
+
+                u = argmin ||op(u) - v||_2.
+
+            Since for an invertible operator the least squares solution agrees
+            with the result of the application of the inverse operator,
+            setting this option should, in general, have no effect on the result
+            for those operators. However, note that when no appropriate
+            |solver_options| are set for the operator, most implementations
+            will choose a least squares solver by default which may be
+            undesirable.
+
+        Returns
+        -------
+        |VectorArray| of the inverse operator evaluations.
+
+        Raises
+        ------
+        InversionError
+            The operator could not be inverted.
+        """
+        from pymor.operators.constructions import FixedParameterOperator
+        assembled_op = self.assemble(mu)
+        if assembled_op != self and not isinstance(assembled_op, FixedParameterOperator):
+            return assembled_op.apply_inverse(V, least_squares=least_squares)
+        elif self.linear:
+            options = self.solver_options.get('inverse') if self.solver_options else None
+            return genericsolvers.apply_inverse(assembled_op, V, options=options, least_squares=least_squares)
+        else:
+            from pymor.algorithms.newton import newton
+            from pymor.core.exceptions import NewtonError
+
+            options = self.solver_options.get('inverse') if self.solver_options else None
+            if options:
+                if isinstance(options, str):
+                    assert options == 'newton'
+                    options = {}
+                else:
+                    assert options['type'] == 'newton'
+                    options = options.copy()
+                    options.pop('type')
+            else:
+                options = {}
+            options['least_squares'] = least_squares
+
+            R = V.empty(reserve=len(V))
+            for i in range(len(V)):
+                try:
+                    R.append(newton(self, V[i], mu=mu, **options)[0])
+                except NewtonError as e:
+                    raise InversionError(e)
+            return R
+
+    def apply_inverse_adjoint(self, U, mu=None, least_squares=False):
+        """Apply the inverse adjoint operator.
+
+        Parameters
+        ----------
+        U
+            |VectorArray| of vectors to which the inverse adjoint operator is applied.
+        mu
+            The |Parameter| for which to evaluate the inverse adjoint operator.
+        least_squares
+            If `True`, solve the least squares problem::
+
+                v = argmin ||op^*(v) - u||_2.
+
+            Since for an invertible operator the least squares solution agrees
+            with the result of the application of the inverse operator,
+            setting this option should, in general, have no effect on the result
+            for those operators. However, note that when no appropriate
+            |solver_options| are set for the operator, most operator
+            implementations will choose a least squares solver by default which
+            may be undesirable.
+
+        Returns
+        -------
+        |VectorArray| of the inverse adjoint operator evaluations.
+
+        Raises
+        ------
+        InversionError
+            The operator could not be inverted.
+        """
+        from pymor.operators.constructions import FixedParameterOperator
+        if not self.linear:
+            raise LinAlgError('Operator not linear.')
+        assembled_op = self.assemble(mu)
+        if assembled_op != self and not isinstance(assembled_op, FixedParameterOperator):
+            return assembled_op.apply_inverse_adjoint(U, least_squares=least_squares)
+        else:
+            # use generic solver for the adjoint operator
+            from pymor.operators.constructions import AdjointOperator
+            options = {'inverse': self.solver_options.get('inverse_adjoint') if self.solver_options else None}
+            adjoint_op = AdjointOperator(self, with_apply_inverse=False, solver_options=options)
+            return adjoint_op.apply_inverse(U, mu=mu, least_squares=least_squares)
+
+    def jacobian(self, U, mu=None):
+        """Return the operator's Jacobian as a new |Operator|.
+
+        Parameters
+        ----------
+        U
+            Length 1 |VectorArray| containing the vector for which to compute
+            the Jacobian.
+        mu
+            The |Parameter| for which to compute the Jacobian.
+
+        Returns
+        -------
+        Linear |Operator| representing the Jacobian.
+        """
+        if self.linear:
+            if self.parametric:
+                return self.assemble(mu)
+            else:
+                return self
+        else:
+            raise NotImplementedError
+
+    def d_mu(self, component, index=()):
+        """Return the operator's derivative with respect to an index of a parameter component.
+
+        Parameters
+        ----------
+        component
+            Parameter component
+        index
+            index in the parameter component
+
+        Returns
+        -------
+        New |Operator| representing the partial derivative.
+        """
+        if self.parametric:
+            raise NotImplementedError
+        else:
+            from pymor.operators.constructions import ZeroOperator
+            return ZeroOperator(self.range, self.source, name=self.name + '_d_mu')
+
+    def as_range_array(self, mu=None):
+        """Return a |VectorArray| representation of the operator in its range space.
+
+        In the case of a linear operator with |NumpyVectorSpace| as
+        :attr:`~Operator.source`, this method returns for every |Parameter|
+        `mu` a |VectorArray| `V` in the operator's :attr:`~Operator.range`,
+        such that ::
+
+            V.lincomb(U.to_numpy()) == self.apply(U, mu)
+
+        for all |VectorArrays| `U`.
+
+        Parameters
+        ----------
+        mu
+            The |Parameter| for which to return the |VectorArray| representation.
+
+        Returns
+        -------
+        V
+            The |VectorArray| defined above.
+        """
+        assert isinstance(self.source, NumpyVectorSpace) and self.linear
+        return self.apply(self.source.from_numpy(np.eye(self.source.dim)), mu=mu)
+
+    def as_source_array(self, mu=None):
+        """Return a |VectorArray| representation of the operator in its source space.
+
+        In the case of a linear operator with |NumpyVectorSpace| as
+        :attr:`~Operator.range`, this method returns for every |Parameter|
+        `mu` a |VectorArray| `V` in the operator's :attr:`~Operator.source`,
+        such that ::
+
+            self.range.make_array(V.dot(U).T) == self.apply(U, mu)
+
+        for all |VectorArrays| `U`.
+
+        Parameters
+        ----------
+        mu
+            The |Parameter| for which to return the |VectorArray| representation.
+
+        Returns
+        -------
+        V
+            The |VectorArray| defined above.
+        """
+        assert isinstance(self.range, NumpyVectorSpace) and self.linear
+        return self.apply_adjoint(self.range.from_numpy(np.eye(self.range.dim)), mu=mu)
+
+    def as_vector(self, mu=None):
+        """Return a vector representation of a linear functional or vector operator.
+
+        Depending on the operator's :attr:`~Operator.source` and
+        :attr:`~Operator.range`, this method is equivalent to calling
+        :meth:`~Operator.as_range_array` or :meth:`~Operator.as_source_array`
+        respectively. The resulting |VectorArray| is required to have length 1.
+
+        Parameters
+        ----------
+        mu
+            The |Parameter| for which to return the vector representation.
+
+        Returns
+        -------
+        V
+            |VectorArray| of length 1 containing the vector representation.
+        """
+        if not self.linear:
+            raise TypeError('This nonlinear operator does not represent a vector or linear functional.')
+        if self.source.is_scalar:
+            return self.as_range_array(mu)
+        elif self.range.is_scalar:
+            return self.as_source_array(mu)
+        else:
+            raise TypeError('This operator does not represent a vector or linear functional.')
+
+    def assemble(self, mu=None):
+        """Assemble the operator for a given parameter.
+
+        The result of the method strongly depends on the given operator.
+        For instance, a matrix-based operator will assemble its matrix, a |LincombOperator|
+        will try to form the linear combination of its operators, whereas an arbitrary
+        operator might simply return a :class:`~pymor.operators.constructions.FixedParameterOperator`.
+        The only assured property of the assembled operator is that it no longer
+        depends on a |Parameter|.
+
+        Parameters
+        ----------
+        mu
+            The |Parameter| for which to assemble the operator.
+
+        Returns
+        -------
+        Parameter-independent, assembled |Operator|.
+        """
+        if self.parametric:
+            from pymor.operators.constructions import FixedParameterOperator
+
+            return FixedParameterOperator(self, mu=mu, name=self.name + '_assembled')
+        else:
+            return self
+
+    def _assemble_lincomb(self, operators, coefficients, identity_shift=0., solver_options=None, name=None):
+        """Try to assemble a linear combination of the given operators.
+
+        Returns a new |Operator| which represents the sum ::
+
+            c_1*O_1 + ... + c_N*O_N + s*I
+
+        where `O_i` are |Operators|, `c_i`, `s` scalar coefficients and `I` the identity.
+
+        This method is called in the :meth:`assemble` method of |LincombOperator| on
+        the first of its operators. If an assembly of the given linear combination
+        is possible, e.g. the linear combination of the system matrices of the
+        operators can be formed, then the assembled operator is returned.
+        Otherwise, the method returns `None` to indicate that assembly is not possible.
+
+        Parameters
+        ----------
+        operators
+            List of |Operators| `O_i` whose linear combination is formed.
+        coefficients
+            List of the corresponding linear coefficients `c_i`.
+        identity_shift
+            The coefficient `s`.
+        solver_options
+            |solver_options| for the assembled operator.
+        name
+            Name of the assembled operator.
+
+        Returns
+        -------
+        The assembled |Operator| if assembly is possible, otherwise `None`.
+        """
+        return None
+
+    def restricted(self, dofs):
+        """Restrict the operator range to a given set of degrees of freedom.
+
+        This method returns a restricted version `restricted_op` of the
+        operator along with an array `source_dofs` such that for any
+        |VectorArray| `U` in `self.source` the following is true::
+
+            self.apply(U, mu).dofs(dofs)
+                == restricted_op.apply(NumpyVectorArray(U.dofs(source_dofs)), mu))
+
+        Such an operator is mainly useful for
+        :class:`empirical interpolation <pymor.operators.ei.EmpiricalInterpolatedOperator>`
+        where the evaluation of the original operator only needs to be known
+        for few selected degrees of freedom. If the operator has a small
+        stencil, only few `source_dofs` will be needed to evaluate the
+        restricted operator which can make its evaluation very fast
+        compared to evaluating the original operator.
+
+        Parameters
+        ----------
+        dofs
+            One-dimensional |NumPy array| of degrees of freedom in the operator
+            :attr:`~Operator.range` to which to restrict.
+
+        Returns
+        -------
+        restricted_op
+            The restricted operator as defined above. The operator will have
+            |NumpyVectorSpace| `(len(source_dofs))` as :attr:`~Operator.source`
+            and |NumpyVectorSpace| `(len(dofs))` as :attr:`~Operator.range`.
+        source_dofs
+            One-dimensional |NumPy array| of source degrees of freedom as
+            defined above.
+        """
+        raise NotImplementedError
+
+    def __add__(self, other):
+        """Sum of two operators."""
+        if other == 0:
+            return self
+        if not isinstance(other, Operator):
+            return NotImplemented
+        from pymor.operators.constructions import LincombOperator
+        if isinstance(other, LincombOperator):
+            return NotImplemented
+        else:
+            return LincombOperator([self, other], [1., 1.])
+
+    __radd__ = __add__
+
+    def __sub__(self, other):
+        if not isinstance(other, Operator):
+            return NotImplemented
+        from pymor.operators.constructions import LincombOperator
+        if isinstance(other, LincombOperator):
+            return NotImplemented
+        else:
+            return LincombOperator([self, other], [1., -1.])
+
+    def __mul__(self, other):
+        """Product of operator by a scalar."""
+        if not isinstance(other, (Number, ParameterFunctional)):
+            return NotImplemented
+        from pymor.operators.constructions import LincombOperator
+        return LincombOperator([self], [other])
+
+    def __rmul__(self, other):
+        return self * other
+
+    def __matmul__(self, other):
+        """Concatenation of two operators."""
+        if not isinstance(other, Operator):
+            return NotImplemented
+        from pymor.operators.constructions import Concatenation
+        if isinstance(other, Concatenation):
+            return NotImplemented
+        else:
+            return Concatenation((self, other))
+
+    def __neg__(self):
+        return self * (-1.)
+
+    def __str__(self):
+        return f'{self.name}: R^{self.source.dim} --> R^{self.range.dim}  ' \
+               f'(parameter type: {self.parameter_type}, class: {self.__class__.__name__})'

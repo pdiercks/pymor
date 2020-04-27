@@ -1,58 +1,15 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
-from pymor.algorithms.timestepping import TimeStepperInterface
-from pymor.models.interfaces import ModelInterface
-from pymor.operators.constructions import VectorOperator, induced_norm
+from pymor.algorithms.timestepping import TimeStepper
+from pymor.models.interface import Model
+from pymor.operators.constructions import VectorOperator
 from pymor.tools.formatrepr import indent_value
-from pymor.tools.frozendict import FrozenDict
-from pymor.vectorarrays.interfaces import VectorArrayInterface
+from pymor.vectorarrays.interface import VectorArray
 
 
-class ModelBase(ModelInterface):
-    """Base class for |Models| providing some common functionality."""
-
-    sid_ignore = ModelInterface.sid_ignore | {'visualizer'}
-
-    def __init__(self, products=None, estimator=None, visualizer=None,
-                 cache_region=None, name=None, **kwargs):
-
-        products = FrozenDict(products or {})
-
-        if products:
-            for k, v in products.items():
-                setattr(self, f'{k}_product', v)
-                setattr(self, f'{k}_norm', induced_norm(v))
-
-        self.__auto_init(locals())
-        self.enable_caching(cache_region)
-
-    def visualize(self, U, **kwargs):
-        """Visualize a solution |VectorArray| U.
-
-        Parameters
-        ----------
-        U
-            The |VectorArray| from
-            :attr:`~pymor.models.interfaces.ModelInterface.solution_space`
-            that shall be visualized.
-        kwargs
-            See docstring of `self.visualizer.visualize`.
-        """
-        if self.visualizer is not None:
-            return self.visualizer.visualize(U, self, **kwargs)
-        else:
-            raise NotImplementedError('Model has no visualizer.')
-
-    def estimate(self, U, mu=None):
-        if self.estimator is not None:
-            return self.estimator.estimate(U, mu=mu, m=self)
-        else:
-            raise NotImplementedError('Model has no estimator.')
-
-
-class StationaryModel(ModelBase):
+class StationaryModel(Model):
     """Generic class for models of stationary problems.
 
     This class describes discrete problems given by the equation::
@@ -95,25 +52,21 @@ class StationaryModel(ModelBase):
         is not `None`, a `visualize(U, *args, **kwargs)` method is added
         to the model which forwards its arguments to the
         visualizer's `visualize` method.
-    cache_region
-        `None` or name of the |CacheRegion| to use.
     name
         Name of the model.
     """
 
     def __init__(self, operator, rhs, output_functional=None, products=None,
-                 parameter_space=None, estimator=None, visualizer=None, cache_region=None, name=None):
+                 parameter_space=None, estimator=None, visualizer=None, name=None):
 
-        if isinstance(rhs, VectorArrayInterface):
+        if isinstance(rhs, VectorArray):
             assert rhs in operator.range
             rhs = VectorOperator(rhs, name='rhs')
 
         assert rhs.range == operator.range and rhs.source.is_scalar and rhs.linear
         assert output_functional is None or output_functional.source == operator.source
 
-        super().__init__(products=products,
-                         estimator=estimator, visualizer=visualizer,
-                         cache_region=cache_region, name=name)
+        super().__init__(products=products, estimator=estimator, visualizer=visualizer, name=name)
 
         self.build_parameter_type(operator, rhs, output_functional)
         self.__auto_init(locals())
@@ -148,7 +101,7 @@ class StationaryModel(ModelBase):
             return U
 
 
-class InstationaryModel(ModelBase):
+class InstationaryModel(Model):
     """Generic class for models of instationary problems.
 
     This class describes instationary problems given by the equations::
@@ -177,8 +130,8 @@ class InstationaryModel(ModelBase):
     mass
         The mass |Operator| `M`. If `None`, the identity is assumed.
     time_stepper
-        The :class:`time-stepper <pymor.algorithms.timestepping.TimeStepperInterface>`
-        to be used by :meth:`~pymor.models.interfaces.ModelInterface.solve`.
+        The :class:`time-stepper <pymor.algorithms.timestepping.TimeStepper>`
+        to be used by :meth:`~pymor.models.interface.Model.solve`.
     num_values
         The number of returned vectors of the solution trajectory. If `None`, each
         intermediate vector that is calculated is returned.
@@ -204,24 +157,22 @@ class InstationaryModel(ModelBase):
         is not `None`, a `visualize(U, *args, **kwargs)` method is added
         to the model which forwards its arguments to the
         visualizer's `visualize` method.
-    cache_region
-        `None` or name of the |CacheRegion| to use.
     name
         Name of the model.
     """
 
     def __init__(self, T, initial_data, operator, rhs, mass=None, time_stepper=None, num_values=None,
                  output_functional=None, products=None, parameter_space=None, estimator=None, visualizer=None,
-                 cache_region=None, name=None):
+                 name=None):
 
-        if isinstance(rhs, VectorArrayInterface):
+        if isinstance(rhs, VectorArray):
             assert rhs in operator.range
             rhs = VectorOperator(rhs, name='rhs')
-        if isinstance(initial_data, VectorArrayInterface):
+        if isinstance(initial_data, VectorArray):
             assert initial_data in operator.source
             initial_data = VectorOperator(initial_data, name='initial_data')
 
-        assert isinstance(time_stepper, TimeStepperInterface)
+        assert isinstance(time_stepper, TimeStepper)
         assert initial_data.source.is_scalar
         assert operator.source == initial_data.range
         assert rhs is None \
@@ -230,8 +181,7 @@ class InstationaryModel(ModelBase):
             or mass.linear and mass.source == mass.range == operator.source
         assert output_functional is None or output_functional.source == operator.source
 
-        super().__init__(products=products, estimator=estimator,
-                         visualizer=visualizer, cache_region=cache_region, name=name)
+        super().__init__(products=products, estimator=estimator, visualizer=visualizer, name=name)
 
         self.build_parameter_type(initial_data, operator, rhs, mass, output_functional, provides={'_t': 0})
         self.__auto_init(locals())

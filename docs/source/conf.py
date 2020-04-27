@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 import sys, os, re
@@ -87,14 +87,10 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.viewcode',
               'sphinx.ext.intersphinx',
               'pymordocstring',
-              'nb2plots'
+              'nb2plots',
+              'sphinx.ext.mathjax',
+              'sphinx_qt_documentation',
               ]
-try:
-    # was added in sphinx 1.4, some of our target  platforms have only 1.2.x
-    import sphinx.ext.imgmath
-    extensions.append('sphinx.ext.imgmath')
-except ImportError:
-    extensions.append('sphinx.ext.pngmath')
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -107,7 +103,7 @@ master_doc = 'index'
 
 # General substitutions.
 project = 'pyMOR'
-copyright = '2013-2019 pyMOR developers and contributors'
+copyright = '2013-2020 pyMOR developers and contributors'
 
 # The default replacements for |version| and |release|, also used in various
 # other places throughout the built documents.
@@ -282,8 +278,10 @@ coverage_ignore_c_items = {}
 
 # autodoc_default_flags = ['members', 'undoc-members', 'show-inheritance']
 
+# PyQt5 inventory is only used internally, actual link targets PySide2
 intersphinx_mapping = {'python': ('http://docs.python.org/3', None),
                        'numpy': ('http://docs.scipy.org/doc/numpy', None),
+                       'PyQt5': ("https://www.riverbankcomputing.com/static/Docs/PyQt5", None),
                        'scipy': ('http://docs.scipy.org/doc/scipy/reference', None)}
 
 import substitutions
@@ -292,3 +290,13 @@ rst_epilog = substitutions.substitutions
 modindex_common_prefix = ['pymor.']
 
 nbplot_render_output = True
+nbplot_cwd = os.path.dirname(os.path.abspath(__file__))
+try:
+    base_branch = os.environ['CI_COMMIT_REF_SLUG']
+    markdown_http_base = f'https://docs.pymor.org/en/{base_branch}'
+except KeyError:
+    # this will work as long as all (tutorial) notebooks are side-by-side with the index document
+    markdown_http_base = '.'
+
+# make intersphinx link to pyside2 docs
+qt_documentation = 'PySide2'

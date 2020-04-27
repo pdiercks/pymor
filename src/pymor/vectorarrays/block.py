@@ -1,16 +1,16 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from functools import reduce
 from numbers import Number
 import numpy as np
 
-from pymor.core.interfaces import classinstancemethod
-from pymor.vectorarrays.interfaces import VectorArrayInterface, VectorSpaceInterface
+from pymor.core.base import classinstancemethod
+from pymor.vectorarrays.interface import VectorArray, VectorSpace
 
 
-class BlockVectorArray(VectorArrayInterface):
+class BlockVectorArray(VectorArray):
     """|VectorArray| where each vector is a direct sum of sub-vectors.
 
     Given a list of equal length |VectorArrays| `blocks`, this |VectorArray|
@@ -160,7 +160,7 @@ class BlockVectorArray(VectorArrayInterface):
             self._bins = np.cumsum(np.hstack(([0], dims[bin_map])))
 
 
-class BlockVectorSpace(VectorSpaceInterface):
+class BlockVectorSpace(VectorSpace):
     """|VectorSpace| of :class:`BlockVectorArrays <BlockVectorArray>`.
 
     A :class:`BlockVectorSpace` is defined by the |VectorSpaces| of the
@@ -177,7 +177,7 @@ class BlockVectorSpace(VectorSpaceInterface):
 
     def __init__(self, subspaces):
         subspaces = tuple(subspaces)
-        assert all([isinstance(subspace, VectorSpaceInterface) for subspace in subspaces])
+        assert all([isinstance(subspace, VectorSpace) for subspace in subspaces])
         self.subspaces = subspaces
 
     def __eq__(self, other):

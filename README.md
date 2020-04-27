@@ -22,7 +22,7 @@ provided for getting started quickly.
 License
 -------
 
-Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 following conditions are met:
@@ -71,6 +71,8 @@ command:
     pip install --upgrade pip  # make sure that pip is reasonably new
     pip install pymor[full]
 
+(Please note that pip must be at least version 9.0.0)
+
 This will install the latest release of pyMOR on your system with most optional
 dependencies.
 For Linux we provide binary wheels, so no further system packages should
@@ -82,18 +84,22 @@ for an installation with minimal dependencies.
 There are some optional packages not included with `pymor[full]`
 because they need additional setup on your system:
 
-    # for support of MPI distributed models and parallelization of
-    # greedy algorithms (requires MPI development headers and a C compiler)
-    pip install mpi4py
+- for support of MPI distributed models and parallelization of greedy algorithms
+  (requires MPI development headers and a C compiler):
 
-    # dense matrix equation solver for system-theoretic MOR methods,
-    # required for H-infinity norm calculation (requires OpenBLAS headers and a Fortran compiler)
-    pip install slycot
+      pip install mpi4py
 
-    # sparse matrix equation solver for system-theoretic MOR methods
-    # (other backends available)
-    open https://www.mpi-magdeburg.mpg.de/projects/mess
-    # download and install pymess wheel for your architecture
+- dense matrix equation solver for system-theoretic MOR methods, required for
+  H-infinity norm calculation (requires OpenBLAS headers and a Fortran
+  compiler):
+
+      pip install slycot
+
+- dense and sparse matrix equation solver for system-theoretic MOR methods
+  (other backends available):
+    - from [source](https://gitlab.mpi-magdeburg.mpg.de/mess/cmess-releases)
+      (recommended)
+    - using a [wheel](https://www.mpi-magdeburg.mpg.de/projects/mess)
 
 If you are not operating in a virtual environment, you can pass the optional `--user`
 argument to pip. pyMOR will then only be installed for your
@@ -117,6 +123,14 @@ Release branches will always stay stable and will only receive bugfix commits
 after the corresponding release has been made.
 
 
+Installation via conda
+----------------------
+
+pyMOR can be installed using `conda` by running
+
+    conda install -c conda-forge pymor
+
+
 Documentation
 -------------
 
@@ -134,7 +148,7 @@ Useful Links
 
 * [Latest Changelog](https://pymor.readthedocs.io/en/latest/release_notes.html)
 * [Getting Started](https://pymor.readthedocs.io/en/latest/getting_started.html)
-* [Dependencies](requirements.txt)
+* [Dependencies](https://github.com/pymor/pymor/blob/2019.2.x/requirements.txt)
 
 
 External PDE solvers

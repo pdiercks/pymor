@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 """Proof of concept for solving the Poisson equation in 1D using linear finite elements and our grid interface
@@ -19,11 +19,10 @@ Options:
 
 from docopt import docopt
 
+from pymor.analyticalproblems.domaindescriptions import LineDomain
 from pymor.analyticalproblems.elliptic import StationaryProblem
-from pymor.discretizers.cg import discretize_stationary_cg
-from pymor.discretizers.fv import discretize_stationary_fv
-from pymor.domaindescriptions.basic import LineDomain
-from pymor.functions.basic import ExpressionFunction, ConstantFunction, LincombFunction
+from pymor.analyticalproblems.functions import ExpressionFunction, ConstantFunction, LincombFunction
+from pymor.discretizers.builtin import discretize_stationary_cg, discretize_stationary_fv
 from pymor.parameters.functionals import ProjectionParameterFunctional, ExpressionParameterFunctional
 from pymor.parameters.spaces import CubicParameterSpace
 

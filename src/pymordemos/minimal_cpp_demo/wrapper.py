@@ -1,8 +1,8 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
-from pymor.operators.basic import OperatorBase
+from pymor.operators.interface import Operator
 from pymor.vectorarrays.list import CopyOnWriteVector, ListVectorSpace
 
 import numpy as np
@@ -72,7 +72,7 @@ class WrappedVectorSpace(ListVectorSpace):
         return type(other) is WrappedVectorSpace and self.dim == other.dim
 
 
-class WrappedDiffusionOperator(OperatorBase):
+class WrappedDiffusionOperator(Operator):
     def __init__(self, op):
         assert isinstance(op, DiffusionOperator)
         self.op = op

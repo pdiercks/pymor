@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 # DO NOT use any python features here that require 3.6 or newer
@@ -19,7 +19,7 @@ import pprint
 
 import dependencies
 
-tests_require = dependencies.tests_require
+tests_require = dependencies.ci_requires
 install_requires = dependencies.install_requires
 setup_requires = dependencies.setup_requires()
 install_suggests = dependencies.install_suggests
@@ -125,9 +125,9 @@ def _setup(**kwargs):
     cmdclass.update({'sdist': sdist})
     from numpy import get_include
     include_dirs = [get_include()]
-    ext_modules = [Extension("pymor.tools.relations", ["src/pymor/tools/relations.pyx"], include_dirs=include_dirs),
-                   Extension("pymor.tools.inplace", ["src/pymor/tools/inplace.pyx"], include_dirs=include_dirs),
-                   Extension("pymor.grids._unstructured", ["src/pymor/grids/_unstructured.pyx"], include_dirs=include_dirs)]
+    ext_modules = [Extension("pymor.discretizers.builtin.relations", ["src/pymor/discretizers/builtin/relations.pyx"], include_dirs=include_dirs),
+                   Extension("pymor.discretizers.builtin.inplace", ["src/pymor/discretizers/builtin/inplace.pyx"], include_dirs=include_dirs),
+                   Extension("pymor.discretizers.builtin.grids._unstructured", ["src/pymor/discretizers/builtin/grids/_unstructured.pyx"], include_dirs=include_dirs)]
     # for some reason the *pyx files don't end up in sdist tarballs -> manually add them as package data
     # this _still_ doesn't make them end up in the tarball however -> manually add them in MANIFEST.in
     # duplication is necessary since Manifest sometime is only regarded in sdist, package_data in bdist
@@ -154,8 +154,8 @@ def setup_package():
         version=versioneer.get_version(),
         author='pyMOR developers',
         author_email='pymor-dev@listserv.uni-muenster.de',
-        maintainer='Rene Milk',
-        maintainer_email='rene.milk@wwu.de',
+        maintainer='Rene Fritze',
+        maintainer_email='rene.fritze@wwu.de',
         package_dir={'': 'src'},
         packages=find_packages('src'),
         include_package_data=True,

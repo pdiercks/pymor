@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 import asyncio
@@ -8,11 +8,11 @@ import numpy as np
 from queue import LifoQueue
 
 from pymor.algorithms.pod import pod
-from pymor.core.interfaces import BasicInterface, abstractmethod
+from pymor.core.base import BasicObject, abstractmethod
 from pymor.core.logger import getLogger
 
 
-class Tree(BasicInterface):
+class Tree(BasicObject):
     """A rooted tree."""
 
     root = 0

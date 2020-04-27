@@ -109,15 +109,15 @@ we want so solve. In this case, a
 
 We want to discretize this problem using the finite element method.
 We could do this by hand, creating a |Grid|, instatiating
-:class:`~pymor.operators.cg.DiffusionOperatorP1` finite element diffusion
+:class:`~pymor.discretizers.builtin.cg.DiffusionOperatorP1` finite element diffusion
 operators for each subblock of the domain, forming a |LincombOperator|
 to represent the affine decomposition, instantiating a
-:class:`~pymor.operators.cg.L2ProductFunctionalP1` as right hand side, and
+:class:`~pymor.discretizers.builtin.cg.L2ProductFunctionalP1` as right hand side, and
 putting it all together into a |StationaryModel|. However, since
 :meth:`~pymor.analyticalproblems.thermalblock.thermal_block_problem` returns
 a :class:`~pymor.analyticalproblems.elliptic.StationaryProblem`, we can use
 a predifined *discretizer* to do the work for us. In this case, we use
-:func:`~pymor.discretizers.cg.discretize_stationary_cg`:
+:func:`~pymor.discretizers.builtin.cg.discretize_stationary_cg`:
 
 .. nbplot::
    fom, fom_data = discretize_stationary_cg(p, diameter=1./50.)
@@ -151,7 +151,7 @@ have a look:
    print(fom.parameter_type)
 
 This tells us, that the |Parameter| which
-:meth:`~pymor.models.interfaces.ModelInterface.solve` expects
+:meth:`~pymor.models.interface.Model.solve` expects
 should be a dictionary with one key ``'diffusion'`` whose value is a
 |NumPy array| of shape ``(2, 3)``, corresponding to the block structure of
 the problem. However, by using the
@@ -219,7 +219,7 @@ For the reduced basis we have:
    print(RB.dim)
 
 Let us check if the reduced basis really is orthonormal with respect to
-the H1-product. For this we use the :meth:`~pymor.operators.interfaces.OperatorInterface.apply2`
+the H1-product. For this we use the :meth:`~pymor.operators.interface.Operator.apply2`
 method:
 
 .. nbplot::

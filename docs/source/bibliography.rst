@@ -61,6 +61,12 @@ Bibliography
            SIAM Journal on Matrix Analysis and Applications, 30(2),
            609-638, 2008.
 
+.. [Haa17] Haasdonk, B.,
+           Reduced basis methods for parametrized PDEs - a tutorial
+           introduction for stationary and instationary problems,
+           in Model reduction and approximation, SIAM, Philadelphia, PA, 15,
+           65-136, 2017.
+
 .. [HDO11] Haasdonk, B.; Dihlmann, M. & Ohlberger, M.,
            A training set and multiple bases generation approach for
            parameterized model reduction based on adaptive grids in
@@ -106,6 +112,11 @@ Bibliography
           Balanced truncation model reduction of second-order
           systems,
           Math. Comput. Model. Dyn. Syst., 2008, 14(5), 391-406
+
+.. [RM06] J. Rommes and N. Martins,
+          Efficient computation of multivariable transfer function dominant poles
+          using subspace acceleration.
+          IEEE Trans. Power Syst. 21 (4), pp. 1471-1483, 2006
 
 .. [W12] S. Wyatt,
          Issues in Interpolatory Model Reduction: Inexact Solves,

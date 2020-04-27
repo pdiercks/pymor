@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from numbers import Number
@@ -10,16 +10,16 @@ from pymor.algorithms.basic import almost_equal
 from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.algorithms.pod import pod
 from pymor.algorithms.projection import project, project_to_subbasis
+from pymor.core.base import BasicObject, abstractmethod
 from pymor.core.defaults import defaults
 from pymor.core.exceptions import ExtensionError, AccuracyError
-from pymor.core.interfaces import BasicInterface, abstractmethod
 from pymor.models.basic import StationaryModel, InstationaryModel
 from pymor.models.iosys import LTIModel, SecondOrderModel, LinearDelayModel
 from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.operators.constructions import Concatenation, InverseOperator
 
 
-class ProjectionBasedReductor(BasicInterface):
+class ProjectionBasedReductor(BasicObject):
     """Generic projection based reductor.
 
     Parameters

@@ -1,7 +1,7 @@
 include *.txt
 include *.html
-include src/pymor/tools/*.pyx
-include src/pymor/grids/*.pyx
+include src/discretizers/builtin/*.pyx
+include src/discretizers/builtin/grids/*.pyx
 include src/pymor/version.py
 
 include .coveragerc
@@ -17,6 +17,7 @@ include *.md
 include *.py
 include versioneer.py
 include pyproject.toml
+include .env
 
 include MANIFEST.in
 include README.rst

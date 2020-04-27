@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 import numpy as np
@@ -7,13 +7,13 @@ import scipy.linalg as spla
 
 from pymor.algorithms.gram_schmidt import gram_schmidt, gram_schmidt_biorth
 from pymor.algorithms.riccati import solve_ricc_lrcf, solve_pos_ricc_lrcf
-from pymor.core.interfaces import BasicInterface
+from pymor.core.base import BasicObject
 from pymor.models.iosys import LTIModel
 from pymor.operators.constructions import IdentityOperator
 from pymor.reductors.basic import LTIPGReductor
 
 
-class GenericBTReductor(BasicInterface):
+class GenericBTReductor(BasicObject):
     """Generic Balanced Truncation reductor.
 
     Parameters

@@ -1,16 +1,16 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 import time
 
 import numpy as np
 
+from pymor.core.base import BasicObject, abstractmethod
 from pymor.core.exceptions import ExtensionError
-from pymor.core.interfaces import BasicInterface, abstractmethod
 from pymor.core.logger import getLogger
 from pymor.parallel.dummy import dummy_pool
-from pymor.parallel.interfaces import RemoteObjectInterface
+from pymor.parallel.interface import RemoteObject
 from pymor.tools.deprecated import Deprecated
 
 
@@ -114,7 +114,7 @@ def weak_greedy(surrogate, training_set, atol=None, rtol=None, max_extensions=No
             'time': tictoc}
 
 
-class WeakGreedySurrogate(BasicInterface):
+class WeakGreedySurrogate(BasicObject):
     """Surrogate for the approximation error in :func:`weak_greedy`."""
 
     @abstractmethod
@@ -226,7 +226,7 @@ class RBSurrogate(WeakGreedySurrogate):
             with self.logger.block('Reducing ...'):
                 self.rom = self.reductor.reduce()
 
-        if not isinstance(mus, RemoteObjectInterface):
+        if not isinstance(mus, RemoteObject):
             mus = self.pool.scatter_list(mus)
 
         result = self.pool.apply(_rb_surrogate_evaluate,

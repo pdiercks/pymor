@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 import os
@@ -9,8 +9,8 @@ import base64
 import xmlrpc.client
 from xmlrpc.server import SimpleXMLRPCServer
 
+from pymor.core.base import BasicObject
 from pymor.core.cache import CacheRegion
-from pymor.core.interfaces import BasicInterface
 from pymor.core.pickle import dump, load
 
 
@@ -53,7 +53,7 @@ class NetworkFilesystemRegion(CacheRegion):
         raise NotImplementedError
 
 
-class NetworkFilesystemRegionServer(BasicInterface):
+class NetworkFilesystemRegionServer(BasicObject):
 
     def __init__(self, addr, path, secret=None):
         self.server = server = SimpleXMLRPCServer(addr)

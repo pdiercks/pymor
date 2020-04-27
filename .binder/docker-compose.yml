@@ -1,5 +1,7 @@
 version: '3'
 
+# you should not use this file directly, but rather via the targets in ../Makefile
+
 # this service runs a jupyter notebook server with all of pymor's
 # requirements installed and the src directory added to PYTHONPATH
 
@@ -7,13 +9,19 @@ version: '3'
 # then start with ```docker-compose up --build```
 # and connect to the server at http://localhost:9180/?token=${PYMOR_JUPYTER_TOKEN}
 
+# 3rd party libraries that need editing can be put in .binder/local_packages/
+# These are "installed" at build time of the image and will be available
+# via mount at container runtime
+
 services:
   jupyter:
+    depends_on:
+      - pypi_mirror
     build:
         context: ../
         dockerfile: .binder/Dockerfile
         args:
-            PYVER: 3.7
+            BASE: pymor/jupyter_py${DOCKER_BASE_PYTHON}:${CI_IMAGE_TAG}
             PYMOR_JUPYTER_TOKEN: "${PYMOR_JUPYTER_TOKEN}"
             NB_USER: "${USER}"
             NB_UID: 1000
@@ -23,17 +31,54 @@ services:
         - 9180:8888
     volumes:
         - ./..:/pymor
+        - ./local_packages:/pymor/local_packages
     restart: "no"
+    environment:
+      - NB_DIR
     entrypoint: /usr/local/bin/dev-entrypoint.bash
+    # xsrf check disabled for docs viewing with chrome. Somewhat related issue: https://github.com/jupyterlab/jupyterlab/issues/6106
+    # and see also https://bugs.chromium.org/p/chromium/issues/detail?id=455987
     command: >
-        bash -c "cd notebooks && jupyter notebook --ip 0.0.0.0 --no-browser"
+        bash -c "jupyter notebook --ip 0.0.0.0 --no-browser --notebook-dir=$${NB_DIR} --NotebookApp.disable_check_xsrf=True"
 
   pytest:
-    image: pymor/testing:3.7
+    image: pymor/testing_py${DOCKER_BASE_PYTHON}:${CI_IMAGE_TAG}
+    depends_on:
+      - pypi_mirror
     environment:
-      - PYMOR_PYTEST_MARKER=${PYMOR_PYTEST_MARKER}
-      - CI_PROJECT_DIR=/src
+      - CI_PROJECT_DIR=/pymor
+      - CI_PROJECT_URL=https://zivgitlab.uni-muenster.de/pymor/pymor
+      - CI_COMMIT_SHA
     volumes:
-        - ./..:/src
+        - ./..:/pymor
     restart: "no"
-    command: "/src/.ci/gitlab/script.bash"
+    command: "/pymor/.ci/gitlab/test_${PYMOR_TEST_SCRIPT}.bash"
+
+  pypi_mirror:
+    image: pymor/pypi-mirror_${PYPI_MIRROR}_py${DOCKER_BASE_PYTHON}:${PYPI_MIRROR_TAG}
+    restart: "no"
+
+  wheel_check:
+    image: pymor/deploy_checks:devpi_${PYMOR_TEST_OS}
+    volumes:
+        - ./..:/pymor
+    depends_on:
+      - pymor__devpi
+    command: /bin/bash
+
+  pymor__devpi:
+    image: pymor/devpi:1
+    restart: "no"
+
+  docs:
+    image: pymor/jupyter_py${DOCKER_BASE_PYTHON}:${CI_IMAGE_TAG}
+    depends_on:
+      - pypi_mirror
+    environment:
+      - PYMOR_FORCE_JUPYTER=1
+      - PYMOR_WITH_SPHINX=1
+      - CI_PROJECT_DIR=/pymor
+    volumes:
+        - ./..:/pymor
+    restart: "no"
+    command: "/pymor/.ci/gitlab/test_docs.bash"

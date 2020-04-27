@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from itertools import chain
@@ -7,8 +7,8 @@ import os
 import time
 
 
+from pymor.core.base import BasicObject
 from pymor.core.config import config
-from pymor.core.interfaces import BasicInterface
 from pymor.parallel.basic import WorkerPoolBase
 from pymor.tools.counter import Counter
 
@@ -20,7 +20,7 @@ if config.HAVE_IPYTHON:
         from IPython.parallel import Client, TimeoutError
 
 
-class new_ipcluster_pool(BasicInterface):
+class new_ipcluster_pool(BasicObject):
     """Create a new IPython parallel cluster and connect to it.
 
     This context manager can be used to create an :class:`IPythonPool`

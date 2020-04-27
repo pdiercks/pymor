@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 import numpy as np
@@ -11,18 +11,17 @@ from pymor.algorithms.to_matrix import to_matrix
 from pymor.core.exceptions import InversionError, LinAlgError
 from pymor.operators.block import BlockDiagonalOperator
 from pymor.operators.constructions import (SelectionOperator, InverseOperator, InverseAdjointOperator, IdentityOperator,
-                                           LincombOperator)
+                                           LincombOperator, VectorArrayOperator)
 from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.parameters.base import ParameterType
 from pymor.parameters.functionals import GenericParameterFunctional, ExpressionParameterFunctional
 from pymor.vectorarrays.block import BlockVectorSpace
-from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
-from pymortests.algorithms.stuff import MonomOperator
+from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymortests.fixtures.operator import (operator, operator_with_arrays, operator_with_arrays_and_products,
-                                          picklable_operator)
+                                          picklable_operator, MonomOperator)
 from pymortests.pickling import assert_picklable, assert_picklable_without_dumps_function
-from pymortests.vectorarray import valid_inds, valid_inds_of_same_length, invalid_inds
-from pymor.core.config import is_windows_platform
+from pymortests.vectorarray import valid_inds, valid_inds_of_same_length
+
 
 def test_selection_op():
     p1 = MonomOperator(1)
@@ -418,3 +417,36 @@ def test_InverseAdjointOperator(operator_with_arrays):
                                    rtol=rtol, atol=atol))
     except (InversionError, LinAlgError, NotImplementedError):
         pass
+
+
+def test_vectorarray_op_apply_inverse():
+    np.random.seed(1234)
+    O = np.random.random((5, 5))
+    op = VectorArrayOperator(NumpyVectorSpace.make_array(O))
+    V = op.range.random()
+    U = op.apply_inverse(V)
+    v = V.to_numpy()
+    u = np.linalg.solve(O.T, v.ravel())
+    assert np.all(almost_equal(U, U.space.from_numpy(u)))
+
+
+def test_vectorarray_op_apply_inverse_lstsq():
+    np.random.seed(1234)
+    O = np.random.random((3, 5))
+    op = VectorArrayOperator(NumpyVectorSpace.make_array(O))
+    V = op.range.random()
+    U = op.apply_inverse(V, least_squares=True)
+    v = V.to_numpy()
+    u = np.linalg.lstsq(O.T, v.ravel())[0]
+    assert np.all(almost_equal(U, U.space.from_numpy(u)))
+
+
+def test_adjoint_vectorarray_op_apply_inverse_lstsq():
+    np.random.seed(1234)
+    O = np.random.random((3, 5))
+    op = VectorArrayOperator(NumpyVectorSpace.make_array(O), adjoint=True)
+    V = op.range.random()
+    U = op.apply_inverse(V, least_squares=True)
+    v = V.to_numpy()
+    u = np.linalg.lstsq(O, v.ravel())[0]
+    assert np.all(almost_equal(U, U.space.from_numpy(u)))

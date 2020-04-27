@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 import time
@@ -43,10 +43,10 @@ class Timer:
 
     def start(self):
         self.dt = -1
-        self._start = time.clock()
+        self._start = time.process_time()
 
     def stop(self):
-        self.dt = time.clock() - self._start
+        self.dt = time.process_time() - self._start
 
     def __enter__(self):
         self.start()

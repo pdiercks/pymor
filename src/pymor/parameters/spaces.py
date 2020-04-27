@@ -1,17 +1,34 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from itertools import product
 
 import numpy as np
 
+from pymor.core.base import ImmutableObject, abstractmethod
 from pymor.parameters.base import Parameter, ParameterType
-from pymor.parameters.interfaces import ParameterSpaceInterface
 from pymor.tools.random import get_random_state
 
 
-class CubicParameterSpace(ParameterSpaceInterface):
+class ParameterSpace(ImmutableObject):
+    """Interface for |Parameter| spaces.
+
+    Attributes
+    ----------
+    parameter_type
+        |ParameterType| of the space.
+    """
+
+    parameter_type = None
+
+    @abstractmethod
+    def contains(self, mu):
+        """`True` if `mu` is contained in the space."""
+        pass
+
+
+class CubicParameterSpace(ParameterSpace):
     """Simple |ParameterSpace| where each summand is an n-cube.
 
     Parameters

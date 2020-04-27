@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from pymor.core.config import config
@@ -171,7 +171,7 @@ if config.HAVE_SLYCOT:
         Therefore, we assume all |Operators| and |VectorArrays| can be
         converted to |NumPy arrays| using
         :func:`~pymor.algorithms.to_matrix.to_matrix` and
-        :func:`~pymor.vectorarrays.interfaces.VectorArrayInterface.to_numpy`.
+        :func:`~pymor.vectorarrays.interface.VectorArray.to_numpy`.
 
         Parameters
         ----------
@@ -291,7 +291,7 @@ if config.HAVE_SLYCOT:
         Therefore, we assume all |Operators| and |VectorArrays| can be
         converted to |NumPy arrays| using
         :func:`~pymor.algorithms.to_matrix.to_matrix` and
-        :func:`~pymor.vectorarrays.interfaces.VectorArrayInterface.to_numpy`.
+        :func:`~pymor.vectorarrays.interface.VectorArray.to_numpy`.
 
         Parameters
         ----------

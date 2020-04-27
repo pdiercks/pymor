@@ -1,9 +1,11 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from importlib import import_module
 import sys
+import platform
+import warnings
 
 
 def _can_import(module):
@@ -18,13 +20,16 @@ def _can_import(module):
 def _get_fenics_version():
     import dolfin as df
     if df.__version__ != '2019.1.0':
-        import warnings
         warnings.warn(f'FEniCS bindings have been tested for version 2019.1.0 (installed: {df.__version__}).')
     return df.__version__
 
 
 def is_windows_platform():
     return sys.platform == 'win32' or sys.platform == 'cygwin'
+
+
+def is_macos_platform():
+    return 'Darwin' in platform.system()
 
 
 def _get_matplotib_version():
@@ -54,15 +59,22 @@ def _get_slycot_version():
 
 
 def _get_qt_version():
-    import Qt
-    return Qt.__binding__ + ' ' + Qt.__binding_version__
+    try:
+        import Qt
+        return Qt.__binding__ + ' ' + Qt.__binding_version__
+    except AttributeError as ae:
+        warnings.warn(f'importing Qt.py abstraction failed:\n{ae}')
+        return False
 
 
 def is_jupyter():
     """This Method is not foolprof and might fail with any given jupyter release
     :return: True if we believe to be running in a Jupyter Notebook or Lab
     """
-    from IPython import get_ipython
+    try:
+        from IPython import get_ipython
+    except (ImportError, ModuleNotFoundError):
+        return False
     from os import environ
     force = environ.get('PYMOR_FORCE_JUPYTER', None)
     if force is not None:

@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 """This module imports some commonly used methods and classes.
@@ -22,7 +22,11 @@ from pymor.algorithms.preassemble import preassemble
 from pymor.algorithms.projection import project, project_to_subbasis
 
 from pymor.analyticalproblems.burgers import burgers_problem, burgers_problem_2d
+from pymor.analyticalproblems.domaindescriptions import RectDomain, CylindricalDomain, TorusDomain, LineDomain, CircleDomain
+from pymor.analyticalproblems.domaindescriptions import DiscDomain, CircularSectorDomain, PolygonalDomain
 from pymor.analyticalproblems.elliptic import StationaryProblem
+from pymor.analyticalproblems.functions import (ConstantFunction, GenericFunction, ExpressionFunction, LincombFunction,
+                                                BitmapFunction)
 from pymor.analyticalproblems.helmholtz import helmholtz_problem
 from pymor.analyticalproblems.instationary import InstationaryProblem
 from pymor.analyticalproblems.thermalblock import thermal_block_problem
@@ -36,21 +40,11 @@ from pymor.core.pickle import dump, dumps, load, loads
 from pymor.models.basic import StationaryModel, InstationaryModel
 from pymor.models.iosys import LTIModel, SecondOrderModel, TransferFunction
 
-from pymor.domaindescriptions.basic import RectDomain, CylindricalDomain, TorusDomain, LineDomain, CircleDomain
-from pymor.domaindescriptions.polygonal import DiscDomain, CircularSectorDomain, PolygonalDomain
-
-from pymor.domaindiscretizers.default import discretize_domain_default
-
-from pymor.discretizers.cg import discretize_stationary_cg, discretize_instationary_cg
-from pymor.discretizers.fv import discretize_stationary_fv, discretize_instationary_fv
-
-from pymor.functions.basic import ConstantFunction, GenericFunction, ExpressionFunction, LincombFunction
-from pymor.functions.bitmap import BitmapFunction
-
-from pymor.grids.boundaryinfos import EmptyBoundaryInfo, GenericBoundaryInfo, AllDirichletBoundaryInfo
-from pymor.grids.oned import OnedGrid
-from pymor.grids.rect import RectGrid
-from pymor.grids.tria import TriaGrid
+from pymor.discretizers.builtin import (discretize_stationary_cg, discretize_instationary_cg,
+                                        discretize_stationary_fv, discretize_instationary_fv,
+                                        OnedGrid, TriaGrid, RectGrid, load_gmsh)
+from pymor.discretizers.builtin.domaindiscretizers.default import discretize_domain_default
+from pymor.discretizers.builtin.grids.boundaryinfos import EmptyBoundaryInfo, GenericBoundaryInfo, AllDirichletBoundaryInfo
 
 from pymor.operators.constructions import (LincombOperator, Concatenation, ComponentProjection, IdentityOperator,
                                            ConstantOperator, ZeroOperator, VectorArrayOperator, VectorOperator,

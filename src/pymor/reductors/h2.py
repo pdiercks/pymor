@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 """Reductors based on H2-norm."""
@@ -13,14 +13,14 @@ from pymor.algorithms.gram_schmidt import gram_schmidt, gram_schmidt_biorth
 from pymor.algorithms.krylov import tangential_rational_krylov
 from pymor.algorithms.sylvester import solve_sylv_schur
 from pymor.algorithms.to_matrix import to_matrix
-from pymor.core.interfaces import BasicInterface
+from pymor.core.base import BasicObject
 from pymor.models.iosys import InputOutputModel, LTIModel
 from pymor.operators.constructions import IdentityOperator
 from pymor.reductors.basic import LTIPGReductor
 from pymor.reductors.interpolation import LTIBHIReductor, TFBHIReductor
 
 
-class GenericIRKAReductor(BasicInterface):
+class GenericIRKAReductor(BasicObject):
     """Generic IRKA related reductor.
 
     Parameters

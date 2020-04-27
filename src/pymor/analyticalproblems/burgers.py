@@ -1,13 +1,13 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 import numpy as np
 
 from pymor.analyticalproblems.elliptic import StationaryProblem
+from pymor.analyticalproblems.domaindescriptions import LineDomain, RectDomain, TorusDomain, CircleDomain
 from pymor.analyticalproblems.instationary import InstationaryProblem
-from pymor.domaindescriptions.basic import LineDomain, RectDomain, TorusDomain, CircleDomain
-from pymor.functions.basic import ConstantFunction, ExpressionFunction
+from pymor.analyticalproblems.functions import ConstantFunction, ExpressionFunction
 from pymor.parameters.spaces import CubicParameterSpace
 
 

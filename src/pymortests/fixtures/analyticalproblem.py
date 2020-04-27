@@ -1,15 +1,15 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 import pytest
 
-from pymor.domaindescriptions.basic import RectDomain
 from pymor.analyticalproblems.burgers import burgers_problem, burgers_problem_2d
+from pymor.analyticalproblems.domaindescriptions import RectDomain
 from pymor.analyticalproblems.elliptic import StationaryProblem
+from pymor.analyticalproblems.functions import GenericFunction, ConstantFunction, LincombFunction
 from pymor.analyticalproblems.helmholtz import helmholtz_problem
 from pymor.analyticalproblems.thermalblock import thermal_block_problem
-from pymor.functions.basic import GenericFunction, ConstantFunction, LincombFunction
 from pymor.parameters.functionals import ExpressionParameterFunctional
 
 

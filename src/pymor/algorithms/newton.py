@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 import numpy as np
@@ -26,7 +26,7 @@ def newton(operator, rhs, initial_guess=None, mu=None, error_norm=None, least_sq
     ----------
     operator
         The |Operator| `A`. `A` must implement the
-        :meth:`~pymor.operators.interfaces.OperatorInterface.jacobian` interface method.
+        :meth:`~pymor.operators.interface.Operator.jacobian` interface method.
     rhs
         |VectorArray| of length 1 containing the vector `V`.
     initial_guess

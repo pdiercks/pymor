@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 # DO NOT use any python features here that require 3.6 or newer
@@ -16,38 +16,38 @@ def _pymess(rev, major, minor, marker=True):
         return '{url} ; python_version == "{major}.{minor}" and "linux" in sys_platform'.format(url=url, major=major, minor=minor)
     return url
 
-# for pyproject.toml we require equality to build compatible wheels in pep 517 mode
-def setup_requires(toml=False):
+def setup_requires():
     NUMPY = '1.16.0'
     # numpy versions with filters according to minimal version with a wheel
     numpys = ['numpy>={};python_version == "3.6"'.format(NUMPY),
       'numpy>=1.15.4;python_version == "3.7"',
-      'numpy>={};python_version != "3.6" and python_version != "3.7"'.format(NUMPY),]
-    other = ['setuptools>=40.8.0', 'wheel', 'pytest-runner>=2.9', 'cython>=0.27', 'packaging',]
-    if toml:
-        numpys = [f.replace('numpy>=', 'numpy==') for f in numpys]
+      'numpy>=1.17.5;python_version == "3.8"',
+      'numpy>={};python_version != "3.6" and python_version != "3.7" and python_version != "3.8"'.format(NUMPY),]
+    other = ['setuptools>=40.8.0', 'wheel', 'pytest-runner>=2.9', 'cython>=0.28', 'packaging',]
     return numpys + other
 
-tests_require = [_PYTEST, 'pytest-cov', 'envparse', 'docker']
-install_requires = ['scipy>=1.1', 'Qt.py', 'packaging','diskcache', 'docopt-ng'] + setup_requires()
+install_requires = ['scipy>=1.1;python_version < "3.8"','scipy>=1.3.3;python_version >= "3.8"', 'Qt.py>=1.2.4', 'packaging','diskcache', 'docopt-ng'] + setup_requires()
 install_suggests = {'ipython>=5.0': 'an enhanced interactive python shell',
-                    'ipyparallel': 'required for pymor.parallel.ipython',
+                    'ipyparallel>=6.2.5': 'required for pymor.parallel.ipython',
                     'matplotlib': 'needed for error plots in demo scipts',
-                    'meshio': 'needed to import Gmsh grids',
+                    'meshio==3.3.1': 'needed to import Gmsh grids',
                     'pyopengl': 'fast solution visualization for builtin discretizations (PySide also required)',
                     'pyamg': 'algebraic multigrid solvers',
                     'pyevtk>=1.1': 'writing vtk output',
-                    'pygmsh': 'python frontend for gmsh',
+                    'pygmsh==6.0.2': 'python frontend for gmsh',
                     'sympy': 'symbolic mathematics',
                     'pythreejs': 'threejs bindings for python notebook  visualization',
                     _PYTEST: 'testing framework required to execute unit tests',
-                    'PyQt5': 'solution visualization for builtin discretizations',
+                    'PySide2': 'solution visualization for builtin discretizations',
                     'ipywidgets': 'notebook GUI elements',
+                    'nbresuse': 'resource usage indicator for notebooks',
+                    'jupyter_contrib_nbextensions': 'modular collection of jupyter extensions',
                     'pillow': 'image library used for bitmap data functions'}
-doc_requires = ['sphinx>=1.7', 'pymor-nb2plots>=0.3', 'matplotlib', 'PyQt5', 'ipyparallel', 'ipywidgets'] + install_requires
-ci_requires = ['pytest-cov', 'pytest-xdist', 'check-manifest', 'nbconvert',
-               'readme_renderer[md]', 'rstcheck', 'codecov', 'twine', 'pytest-memprof',
-               'testipynb']
+doc_requires = ['sphinx>=1.7', 'pymor-nb2plots>=0.7', 'matplotlib', 'PySide2', 'ipyparallel>=6.2.5',
+                'ipywidgets', 'sphinx-qt-documentation'] + install_requires
+ci_requires = [_PYTEST, 'pytest-cov', 'pytest-xdist', 'check-manifest', 'nbconvert', 'pytest-parallel', 'virtualenv',
+               'readme_renderer[md]', 'rstcheck', 'codecov', 'twine', 'pytest-memprof', 'pytest-timeout',
+               'testipynb', "pypi-oldest-requirements>=2020.2", ]
 import_names = {'ipython': 'IPython',
                 'pytest-cache': 'pytest_cache',
                 'pytest-instafail': 'pytest_instafail',
@@ -76,18 +76,9 @@ def extras():
     import pkg_resources
     import itertools
 
-    def _ex(name):
-        # no environment specifiers or wheel URI etc are allowed in extras
-        name = strip_markers(name)
-        try:
-            next(pkg_resources.parse_requirements(name))
-        except pkg_resources.RequirementParseError:
-            name = import_names[name]
-        return name
-
     def _candidates(blacklist):
         # skip those which aren't needed in our current environment (py ver, platform)
-        for pkg in set(itertools.chain(doc_requires, tests_require, install_suggests.keys())):
+        for pkg in set(itertools.chain(doc_requires, install_suggests.keys())):
             if pkg in blacklist:
                 continue
             try:
@@ -105,8 +96,12 @@ def extras():
                 except pkg_resources.RequirementParseError:
                     continue
 
+    # blacklisted packages need a (minimal) compiler setup
+    # - nbresuse, pytest-memprof depend on psutil which has no wheels
+    # - slycot directly needs a compiler setup with BLAS
+    # - pymess is better installed from source (see README.md)
     return {
-        'full': [_ex(f) for f in _candidates(blacklist=[])],
+        'full': list(_candidates(blacklist=['slycot', 'pymess', 'nbresuse', 'pytest-memprof'])),
         'ci':  ci_requires,
         'docs': doc_requires,
     }
@@ -128,7 +123,8 @@ if __name__ == '__main__':
     with open(os.path.join(os.path.dirname(__file__), 'requirements-optional.txt'), 'wt') as req:
         req.write(note+'\n')
         req.write('-r requirements.txt\n')
-        for module in sorted(set(itertools.chain(tests_require, optional_requirements_file_only,
+        req.write('-r requirements-ci.txt\n')
+        for module in sorted(set(itertools.chain(optional_requirements_file_only,
                                                  doc_requires, install_suggests.keys()))):
             req.write(module+'\n')
     with open(os.path.join(os.path.dirname(__file__), 'requirements-ci.txt'), 'wt') as req:
@@ -138,4 +134,4 @@ if __name__ == '__main__':
             req.write(module+'\n')
     with open(os.path.join(os.path.dirname(__file__), 'pyproject.toml'), 'wt') as toml:
         toml.write(note)
-        toml.write(toml_tpl.format(str(setup_requires(toml=True))))
+        toml.write(toml_tpl.format(str(setup_requires())))

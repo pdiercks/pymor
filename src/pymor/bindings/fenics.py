@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from pymor.core.config import config
@@ -10,12 +10,13 @@ if config.HAVE_FENICS:
     import ufl
     import numpy as np
 
+    from pymor.core.base import BasicObject
     from pymor.core.defaults import defaults
-    from pymor.core.interfaces import BasicInterface
-    from pymor.operators.basic import LinearComplexifiedListVectorArrayOperatorBase, OperatorBase
     from pymor.operators.constructions import ZeroOperator
+    from pymor.operators.interface import Operator
+    from pymor.operators.list import LinearComplexifiedListVectorArrayOperatorBase
     from pymor.operators.numpy import NumpyMatrixOperator
-    from pymor.vectorarrays.interfaces import _create_random_values
+    from pymor.vectorarrays.interface import _create_random_values
     from pymor.vectorarrays.list import CopyOnWriteVector, ComplexifiedVector, ComplexifiedListVectorSpace
     from pymor.vectorarrays.numpy import NumpyVectorSpace
 
@@ -33,9 +34,7 @@ if config.HAVE_FENICS:
             self.impl = self.impl.copy()
 
         def to_numpy(self, ensure_copy=False):
-            if ensure_copy:
-                return self.impl.copy().get_local()
-            return self.impl.get_local()
+            return self.impl.get_local()  # always returns a copy
 
         def _scal(self, alpha):
             self.impl *= alpha
@@ -156,7 +155,12 @@ if config.HAVE_FENICS:
         def real_random_vector(self, distribution, random_state, **kwargs):
             impl = df.Function(self.V).vector()
             values = _create_random_values(impl.local_size(), distribution, random_state, **kwargs)
-            impl[:] = values
+            impl[:] = np.ascontiguousarray(values)
+            return FenicsVector(impl)
+
+        def real_vector_from_numpy(self, data, ensure_copy=False):
+            impl = df.Function(self.V).vector()
+            impl[:] = np.ascontiguousarray(data)
             return FenicsVector(impl)
 
         def real_make_vector(self, obj):
@@ -207,7 +211,7 @@ if config.HAVE_FENICS:
 
             return FenicsMatrixOperator(matrix, self.source.V, self.range.V, solver_options=solver_options, name=name)
 
-    class FenicsOperator(OperatorBase):
+    class FenicsOperator(Operator):
         """Wraps a FEniCS form as an |Operator|."""
 
         linear = False
@@ -374,7 +378,7 @@ if config.HAVE_FENICS:
             assert len(set(restricted_dofs)) == len(set(dofs))
             return restricted_dofs
 
-    class RestrictedFenicsOperator(OperatorBase):
+    class RestrictedFenicsOperator(Operator):
 
         linear = False
 
@@ -389,7 +393,7 @@ if config.HAVE_FENICS:
             assert U in self.source
             UU = self.op.source.zeros(len(U))
             for uu, u in zip(UU._list, U.data):
-                uu.real_part.impl[:] = u
+                uu.real_part.impl[:] = np.ascontiguousarray(u)
             VV = self.op.apply(UU, mu=mu)
             V = self.range.zeros(len(VV))
             for v, vv in zip(V.data, VV._list):
@@ -399,7 +403,7 @@ if config.HAVE_FENICS:
         def jacobian(self, U, mu=None):
             assert U in self.source and len(U) == 1
             UU = self.op.source.zeros()
-            UU._list[0].real_part.impl[:] = U.data[0]
+            UU._list[0].real_part.impl[:] = np.ascontiguousarray(U.data[0])
             JJ = self.op.jacobian(UU, mu=mu)
             return NumpyMatrixOperator(JJ.matrix.array()[self.restricted_range_dofs, :])
 
@@ -415,7 +419,7 @@ if config.HAVE_FENICS:
         options = (solver, preconditioner) if preconditioner else (solver,)
         df.solve(matrix, r, v, *options)
 
-    class FenicsVisualizer(BasicInterface):
+    class FenicsVisualizer(BasicObject):
         """Visualize a FEniCS grid function.
 
         Parameters
@@ -444,7 +448,7 @@ if config.HAVE_FENICS:
                 however, is allowed to contain multipled vectors that will be interpreted
                 as a time series.
             m
-                Filled in by :meth:`pymor.models.ModelBase.visualize` (ignored).
+                Filled in by :meth:`pymor.models.interface.Model.visualize` (ignored).
             title
                 Title of the plot.
             legend

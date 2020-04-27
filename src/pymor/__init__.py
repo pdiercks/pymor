@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 import os
@@ -36,12 +36,8 @@ from pymor.core.config import config
 from pymor.core.defaults import load_defaults_from_file
 
 
-if 'PYMOR_DEB_VERSION' in os.environ:
-    revstring = os.environ['PYMOR_DEB_VERSION']
-else:
-    import pymor.version as _version
-    revstring = _version.get_versions()['version']
-
+import pymor.version as _version
+revstring = _version.get_versions()['version']
 __version__ = str(revstring)
 
 if 'PYMOR_DEFAULTS' in os.environ:

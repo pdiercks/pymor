@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 """This module provides the following |NumPy| based |Operators|:
@@ -19,16 +19,16 @@ from scipy.linalg import solve
 import scipy.sparse
 from scipy.sparse import issparse
 
+from pymor.core.base import abstractmethod
 from pymor.core.config import config
 from pymor.core.defaults import defaults
 from pymor.core.exceptions import InversionError
-from pymor.core.interfaces import abstractmethod
 from pymor.core.logger import getLogger
-from pymor.operators.basic import OperatorBase
+from pymor.operators.interface import Operator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 
-class NumpyGenericOperator(OperatorBase):
+class NumpyGenericOperator(Operator):
     """Wraps an arbitrary Python function between |NumPy arrays| as an |Operator|.
 
     Parameters
@@ -89,7 +89,7 @@ class NumpyGenericOperator(OperatorBase):
             return self.source.make_array(self.adjoint_mapping(V))
 
 
-class NumpyMatrixBasedOperator(OperatorBase):
+class NumpyMatrixBasedOperator(Operator):
     """Base class for operators which assemble into a |NumpyMatrixOperator|.
 
     Attributes
@@ -154,7 +154,7 @@ class NumpyMatrixBasedOperator(OperatorBase):
         assert output_format in {'matlab', 'matrixmarket'}
         matrix = self.assemble(mu).matrix
         matrix_name = matrix_name or self.name
-        if output_format is 'matlab':
+        if output_format == 'matlab':
             savemat(filename, {matrix_name: matrix})
         else:
             mmwrite(filename, matrix, comment=matrix_name)

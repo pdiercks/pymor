@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from itertools import product, chain
@@ -9,7 +9,7 @@ import pytest
 import numpy as np
 
 from pymor.algorithms.basic import almost_equal
-from pymor.vectorarrays.interfaces import VectorSpaceInterface
+from pymor.vectorarrays.interface import VectorSpace
 from pymortests.fixtures.vectorarray import \
     (vector_array_without_reserve, vector_array, compatible_vector_array_pair_without_reserve,
      compatible_vector_array_pair, incompatible_vector_array_pair,
@@ -309,7 +309,7 @@ def test_shape(vector_array):
 
 def test_space(vector_array):
     v = vector_array
-    assert isinstance(v.space, VectorSpaceInterface)
+    assert isinstance(v.space, VectorSpace)
     assert v in v.space
 
 

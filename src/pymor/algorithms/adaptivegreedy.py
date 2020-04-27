@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from fractions import Fraction
@@ -8,8 +8,8 @@ import numpy as np
 import time
 
 from pymor.algorithms.greedy import RBSurrogate
+from pymor.core.base import BasicObject
 from pymor.core.exceptions import ExtensionError
-from pymor.core.interfaces import BasicInterface
 from pymor.core.logger import getLogger
 from pymor.parallel.dummy import dummy_pool
 from pymor.parameters.base import Parameter
@@ -307,7 +307,7 @@ def adaptive_greedy(*args, **kwargs):
     return rb_adaptive_greedy(*args, **kwargs)
 
 
-class AdaptiveSampleSet(BasicInterface):
+class AdaptiveSampleSet(BasicObject):
     """An adaptive parameter sample set.
 
     Used by :func:`adaptive_weak_greedy`.

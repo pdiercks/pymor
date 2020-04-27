@@ -1,12 +1,12 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from itertools import product
 
+from pymor.analyticalproblems.domaindescriptions import RectDomain
 from pymor.analyticalproblems.elliptic import StationaryProblem
-from pymor.domaindescriptions.basic import RectDomain
-from pymor.functions.basic import ConstantFunction, ExpressionFunction, LincombFunction
+from pymor.analyticalproblems.functions import ConstantFunction, ExpressionFunction, LincombFunction
 from pymor.parameters.functionals import ProjectionParameterFunctional
 from pymor.parameters.spaces import CubicParameterSpace
 

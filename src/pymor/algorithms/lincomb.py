@@ -1,5 +1,5 @@
 # This file is part of the pyMOR project (http://www.pymor.org).
-# Copyright 2013-2019 pyMOR developers and contributors. All rights reserved.
+# Copyright 2013-2020 pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 from itertools import chain
@@ -33,7 +33,7 @@ def assemble_lincomb(operators, coefficients, solver_options=None, name=None):
     is allowed as assemble_lincomb implements `apply_inverse` for this special case.
 
     To form the linear combination of backend |Operators| (containing actual matrix data),
-    :meth:`~pymor.operators.interfaces.OperatorInterface._assemble_lincomb` will be called
+    :meth:`~pymor.operators.interface.Operator._assemble_lincomb` will be called
     on the first |Operator| in the linear combination.
 
     Parameters
