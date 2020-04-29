@@ -6,6 +6,7 @@ import numpy as np
 
 from pymor.operators.constructions import IdentityOperator, ZeroOperator
 from pymor.operators.interface import Operator
+from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.vectorarrays.block import BlockVectorSpace
 
 
@@ -135,6 +136,33 @@ class BlockOperator(BlockOperatorBase):
 
     blocked_source = True
     blocked_range = True
+
+    def _unblock(self):
+        """unblock BlockOperator
+
+        Assuming all blocks are either
+        :class: `NumpyMatrixOperator <pymor.operators.numpy.NumpyMatrixOperator>`
+        or :class: `ZeroOperator <pymor.operators.constructions.ZeroOperator>` a new
+        single :class: `NumpyMatrixOperator <pymor.operators.numpy.NumpyMatrixOperator>` is
+        formed.
+
+        """
+        assert all([isinstance(op, (ZeroOperator, NumpyMatrixOperator))
+                    for op in self.blocks.ravel()])
+        # turn each into np.ndarray
+        array_blocks = [[b.matrix if not isinstance(b, ZeroOperator) else np.zeros(
+            (b.range.dim, b.source.dim)) for b in row] for row in self.blocks]
+        return NumpyMatrixOperator(np.block(array_blocks),
+                                   source_id=self.source.id,
+                                   range_id=self.range.id,
+                                   solver_options=self.solver_options,
+                                   name=self.name)
+
+    def apply_inverse(self, V, mu=None, least_squares=False, check_finite=True,
+                      default_sparse_solver_backend='scipy'):
+        op = self._unblock()
+        return op.apply_inverse(V, mu=mu, least_squares=least_squares, check_finite=check_finite,
+                                default_sparse_solver_backend=default_sparse_solver_backend)
 
 
 class BlockRowOperator(BlockOperatorBase):

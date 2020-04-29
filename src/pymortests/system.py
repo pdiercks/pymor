@@ -61,3 +61,37 @@ def test_project_system():
 
     assert np.allclose(e.to_numpy(), U.to_numpy())
     assert np.allclose(f.to_numpy(), V.inner(V))
+
+
+def test_unblock_blockoperator():
+    # block operator
+    a, b, c, d = (
+        np.eye(5), 2 * np.eye(5), np.zeros((5, 5)), 3 * np.eye(5)
+    )
+    A, B, C, D = (
+        NumpyMatrixOperator(np.eye(5)), NumpyMatrixOperator(
+            np.eye(5) * 2), None, NumpyMatrixOperator(np.eye(5) * 3)
+    )
+    op = BlockOperator([[A, B], [C, D]])
+    nop = op._unblock()
+
+    assert np.allclose(nop.matrix, np.block([[a, b], [c, d]]))
+
+
+def test_BlockOperator_apply_inverse():
+    # block operator
+    A, B, C, D = (
+        NumpyMatrixOperator(np.eye(5)), NumpyMatrixOperator(
+            np.eye(5) * 2), None, NumpyMatrixOperator(np.eye(5) * 3)
+    )
+    op = BlockOperator([[A, B], [C, D]])
+
+    V = NumpyVectorSpace(10).ones()
+    U = op.apply_inverse(V)
+
+    assert np.allclose(U.to_numpy().flatten(), np.ones(10) / 3)
+
+
+if __name__ == "__main__":
+    test_unblock_blockoperator()
+    test_BlockOperator_apply_inverse()
