@@ -7,7 +7,7 @@ import numpy as np
 from pymor.algorithms.system import project_system
 from pymor.operators.constructions import ZeroOperator, VectorOperator
 from pymor.operators.numpy import NumpyMatrixOperator
-from pymor.operators.block import BlockOperator
+from pymor.operators.block import BlockOperator, UnblockableBlockOperator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.algorithms.gram_schmidt import gram_schmidt
 
@@ -63,7 +63,7 @@ def test_project_system():
     assert np.allclose(f.to_numpy(), V.inner(V))
 
 
-def test_unblock_blockoperator():
+def test_UnblockableBlockOperator():
     # block operator
     a, b, c, d = (
         np.eye(5), 2 * np.eye(5), np.zeros((5, 5)), 3 * np.eye(5)
@@ -72,26 +72,12 @@ def test_unblock_blockoperator():
         NumpyMatrixOperator(np.eye(5)), NumpyMatrixOperator(
             np.eye(5) * 2), None, NumpyMatrixOperator(np.eye(5) * 3)
     )
-    op = BlockOperator([[A, B], [C, D]])
+    op = UnblockableBlockOperator([[A, B], [C, D]])
+
     nop = op._unblock()
-
     assert np.allclose(nop.matrix, np.block([[a, b], [c, d]]))
-
-
-def test_BlockOperator_apply_inverse():
-    # block operator
-    A, B, C, D = (
-        NumpyMatrixOperator(np.eye(5)), NumpyMatrixOperator(
-            np.eye(5) * 2), None, NumpyMatrixOperator(np.eye(5) * 3)
-    )
-    op = BlockOperator([[A, B], [C, D]])
 
     V = NumpyVectorSpace(10).ones()
     U = op.apply_inverse(V)
 
     assert np.allclose(U.to_numpy().flatten(), np.ones(10) / 3)
-
-
-if __name__ == "__main__":
-    test_unblock_blockoperator()
-    test_BlockOperator_apply_inverse()

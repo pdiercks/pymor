@@ -137,6 +137,19 @@ class BlockOperator(BlockOperatorBase):
     blocked_source = True
     blocked_range = True
 
+
+class UnblockableBlockOperator(BlockOperator):
+    """A matrix of arbitrary |Operators|.
+
+    This operator will be unblocked when calling :meth: `apply_inverse
+    <pymor.operators.block.UnblockableBlockOperator.apply_inverse>`.
+
+    Parameters
+    ----------
+    blocks
+        Two-dimensional array-like where each entry is an |Operator| or `None`.
+    """
+
     def _unblock(self):
         """unblock BlockOperator
 
