@@ -8,7 +8,9 @@ import numpy as np
 from pymor.algorithms.projection import project
 from pymor.algorithms.rules import RuleTable, match_class
 from pymor.core.exceptions import RuleNotMatchingError
-from pymor.operators.block import BlockOperator, BlockRowOperator, BlockColumnOperator
+from pymor.operators.block import (
+    BlockOperator, BlockRowOperator, BlockColumnOperator, UnblockableBlockOperator
+)
 from pymor.operators.constructions import (
     Concatenation, VectorArrayOperator, ZeroOperator, LincombOperator)
 from pymor.operators.interface import Operator
@@ -74,7 +76,10 @@ class ProjectSystemRules(RuleTable):
         projected_blocks = np.array([project_block(i, j, block) if not isinstance(block, ZeroOperator) else None
                                      for (i, j), block in np.ndenumerate(op.blocks)])
         projected_blocks.shape = op.blocks.shape
-        return BlockOperator(blocks=projected_blocks)
+        if hasattr(op, '_unblock'):
+            return UnblockableBlockOperator(blocks=projected_blocks)
+        else:
+            return BlockOperator(blocks=projected_blocks)
 
     @match_class(BlockRowOperator)
     def action_BlockRowOperator(self, op):
