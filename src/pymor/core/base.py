@@ -350,9 +350,9 @@ class ImmutableObject(BasicObject, metaclass=ImmutableMeta):
             if arg not in kwargs:
                 try:
                     kwargs[arg] = getattr(self, arg)
-                except AttributeError as e:
+                except AttributeError:
                     raise ValueError(f"Cannot find missing __init__ argument '{arg}' for '{self.__class__}' "
-                                     f"as attribute of '{self}'") from e
+                                     f"as attribute of '{self}'")
 
         c = (type(self) if new_type is None else new_type)(**kwargs)
 
