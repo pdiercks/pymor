@@ -57,8 +57,7 @@ def main(
     standard_RB_reductor = standard_reductor(fom, RB=primal_reduced_basis, product=product,
                                              coercivity_estimator=coercivity_estimator)
 
-    # also construct dual bases for dwr
-    
+    # Also construct dual bases for dwr:
     # If the operator of `fom` is symmetric (in theory and before boundary treatment),
     # it can make sense to consider the same operator also for the adjoint case
     # for the dual models. In this case `operator_symmetric` as `True`,
@@ -192,6 +191,7 @@ def create_fom(grid_intervals, vector_valued_output=False):
     fom, _ = discretize_stationary_cg(p, diameter=1./grid_intervals)
     return fom
 
+
 def create_dual_model(fom, dim=0, operator_is_symmetric=False):
     """Return dual model with the output as right hand side.
 
@@ -225,6 +225,7 @@ def create_dual_model(fom, dim=0, operator_is_symmetric=False):
     dual_model = fom.with_(operator=dual_operator, rhs=dual_rhs,
                            output_functional=None, name=fom.name + '_dual')
     return dual_model
+
 
 if __name__ == '__main__':
     run(main)

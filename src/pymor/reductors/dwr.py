@@ -8,7 +8,6 @@ from numbers import Number
 from pymor.core.base import ImmutableObject, BasicObject
 from pymor.algorithms.projection import project
 from pymor.operators.interface import Operator
-from pymor.operators.constructions import VectorOperator
 from pymor.reductors.coercive import CoerciveRBReductor
 from pymor.reductors.residual import ResidualOperator
 
@@ -22,7 +21,7 @@ class DWRCoerciveRBReductor(BasicObject):
     This also enables a DWR based error estimator for the corrected output functional.
     The DWR approach requires a dual problem for every dimension of the output functional.
     Each dual problem needs to be predefined by the user and should have the respective
-    the output functional as right hand side. 
+    the output functional as right hand side.
 
     Parameters
     ----------
@@ -133,7 +132,6 @@ class DWRCoerciveRBReductor(BasicObject):
             dual_projected_primal_residuals.append(primal_residual)
         return CorrectedOutputFunctional(primal_rom.output_functional, dual_roms,
                                          dual_projected_primal_residuals)
-
 
     def assemble_error_estimator_for_subbasis(self, dual_roms, dim):
         return self._last_rom.error_estimator.restricted_to_subbasis(dual_roms, dim, m=self._last_rom)
