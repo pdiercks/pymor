@@ -152,6 +152,7 @@ _PACKAGES = {
     'DEALII': lambda: import_module('pymor_dealii').__version__,
     'DUNEGDT': _get_dunegdt_version,
     'FENICS': _get_fenics_version,
+    'FENICSX': lambda: import_module('dolfinx').__version__,
     'GL': lambda: import_module('OpenGL.GL') and import_module('OpenGL').__version__,
     'IPYTHON': _get_ipython_version,
     'MATPLOTLIB': _get_matplotib_version,
