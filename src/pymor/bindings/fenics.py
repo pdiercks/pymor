@@ -26,6 +26,10 @@ from pymor.vectorarrays.list import ComplexifiedListVectorSpace, ComplexifiedVec
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 
+from pymor.bindings._patch_ufl import patch_ufl
+patch_ufl()
+
+
 @unpicklable
 class FenicsVector(CopyOnWriteVector):
     """Wraps a FEniCS vector to make it usable with ListVectorArray."""
