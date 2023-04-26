@@ -34,6 +34,10 @@ class FenicsxVector(CopyOnWriteVector):
         self.impl = self.impl.copy()
 
     def to_numpy(self, ensure_copy=False):
+        # u.vector.array returns array of length n, if n is the number of dofs on the process
+        # u.vector.array is not a copy
+        # what is the desired behaviour in parallel? in the legacy fenics .get_local()
+        # would return only dofs on local process, so this is fine I think
         return self.impl.array.copy() if ensure_copy else self.impl.array  # TODO what happens here in parallel)
 
     def _scal(self, alpha):
@@ -49,19 +53,25 @@ class FenicsxVector(CopyOnWriteVector):
         return self.impl.dot(other.impl)
 
     def norm(self):
-        return self.impl.norm(PETSc.NormType.NORM_2)  # TODO parallel?
+        # u.vector.norm(PETSc.NormType.NORM_2) returns global norm
+        # same behaviour as in legacy fenics
+        return self.impl.norm(PETSc.NormType.NORM_2)
 
     def norm2(self):
         return self.impl.norm(PETSc.NormType.NORM_2) ** 2
 
     def sup_norm(self):
-        return self.impl.norm(PETSc.NormType.NORM_INFINITY)  # TODO parallel?
+        return self.impl.norm(PETSc.NormType.NORM_INFINITY)
 
     def dofs(self, dof_indices):
         dof_indices = np.array(dof_indices, dtype=np.intc)
         if len(dof_indices) == 0:
             return np.array([], dtype=np.intc)
-        return self.impl.getValues(dof_indices)  # TODO Global indices but only for local processor allowd
+        owned = self.impl.getOwnershipRange()
+        in_range = np.isin(dof_indices, np.arange(*owned, dtype=np.intc))
+        dofs_on_proc = dof_indices[in_range]
+        # returns dof values for dof indices on process
+        return self.impl.getValues(dofs_on_proc)
 
     def amax(self):
         raise NotImplementedError  # is implemented for complexified vector
