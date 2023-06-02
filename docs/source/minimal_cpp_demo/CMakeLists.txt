@@ -1,6 +1,5 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.15)
 
-set(Python3_EXECUTABLE /usr/local/bin/python3 CACHE PATH "")
 project(minimal-cpp-demo)
 
 if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.18.0")
@@ -18,5 +17,3 @@ add_library(model MODULE model.cc)
 target_link_libraries(model pybind11::module)
 set_target_properties(model PROPERTIES PREFIX "${PYTHON_MODULE_PREFIX}")
 set_target_properties(model PROPERTIES SUFFIX "${PYTHON_MODULE_EXTENSION}")
-
-

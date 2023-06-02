@@ -10,7 +10,7 @@ import scipy.linalg as spla
 from pymor.algorithms.to_matrix import to_matrix
 from pymor.core.cache import CacheableObject, cached
 from pymor.operators.block import BlockColumnOperator, BlockDiagonalOperator, BlockOperator, BlockRowOperator
-from pymor.parameters.base import Mu, ParametricObject
+from pymor.parameters.base import Mu, Parameters, ParametricObject
 from pymor.tools.plot import adaptive
 
 
@@ -424,7 +424,7 @@ class TransferFunction(CacheableObject, ParametricObject):
         else:
             return norm, norm_relerr, quad_out[2:]
 
-    def h2_inner(self, lti):
+    def h2_inner(self, lti, mu=None):
         """Compute H2 inner product with an |LTIModel|.
 
         Uses the inner product formula based on the pole-residue form
@@ -436,6 +436,8 @@ class TransferFunction(CacheableObject, ParametricObject):
         lti
             |LTIModel| consisting of |Operators| that can be converted to |NumPy arrays|.
             The D operator is ignored.
+        mu
+            |Parameter values|.
 
         Returns
         -------
@@ -445,8 +447,12 @@ class TransferFunction(CacheableObject, ParametricObject):
         from pymor.models.iosys import LTIModel, _lti_to_poles_b_c
         assert isinstance(lti, LTIModel)
 
-        poles, b, c = _lti_to_poles_b_c(lti)
-        inner = sum(c[i].dot(self.eval_tf(-poles[i]).dot(b[i]))
+        if not isinstance(mu, Mu):
+            mu = self.parameters.parse(mu)
+        assert self.parameters.assert_compatible(mu)
+
+        poles, b, c = _lti_to_poles_b_c(lti, mu=mu)
+        inner = sum(c[i].dot(self.eval_tf(-poles[i], mu=mu).dot(b[i]))
                     for i in range(len(poles)))
         inner = inner.conjugate()
 
@@ -464,7 +470,7 @@ class TransferFunction(CacheableObject, ParametricObject):
         dtf = (lambda s, mu=None: self.eval_dtf(s, mu=mu) + other.eval_dtf(s, mu=mu)
                if hasattr(other, 'eval_dtf')
                else None)
-        return self.with_(tf=tf, dtf=dtf)
+        return self.with_(tf=tf, dtf=dtf, parameters=Parameters.of(self, other))
 
     __radd__ = __add__
 
@@ -483,7 +489,7 @@ class TransferFunction(CacheableObject, ParametricObject):
         dtf = (lambda s, mu=None: other.eval_dtf(s, mu=mu) - self.eval_dtf(s, mu=mu)
                if hasattr(other, 'eval_dtf')
                else None)
-        return self.with_(tf=tf, dtf=dtf)
+        return self.with_(tf=tf, dtf=dtf, parameters=Parameters.of(self, other))
 
     def __neg__(self):
         tf = lambda s, mu=None: -self.eval_tf(s, mu=mu)
@@ -502,7 +508,7 @@ class TransferFunction(CacheableObject, ParametricObject):
                                    + self.eval_tf(s, mu=mu) @ other.eval_dtf(s, mu=mu))
                if hasattr(other, 'eval_dtf')
                else None)
-        return self.with_(tf=tf, dtf=dtf)
+        return self.with_(tf=tf, dtf=dtf, parameters=Parameters.of(self, other))
 
     def __rmul__(self, other):
         assert isinstance(other, TransferFunction) or hasattr(other, 'transfer_function')
@@ -516,7 +522,7 @@ class TransferFunction(CacheableObject, ParametricObject):
                                    + other.eval_tf(s, mu=mu) @ self.eval_dtf(s, mu=mu))
                if hasattr(other, 'eval_dtf')
                else None)
-        return self.with_(tf=tf, dtf=dtf)
+        return self.with_(tf=tf, dtf=dtf, parameters=Parameters.of(self, other))
 
 
 class FactorizedTransferFunction(TransferFunction):
@@ -629,7 +635,7 @@ class FactorizedTransferFunction(TransferFunction):
               if self.dD is not None and other.dD is not None
               else None)
 
-        return self.with_(K=K, B=B, C=C, D=D, dK=dK, dB=dB, dC=dC, dD=dD)
+        return self.with_(K=K, B=B, C=C, D=D, dK=dK, dB=dB, dC=dC, dD=dD, parameters=Parameters.of(self, other))
 
     __radd__ = __add__
 
@@ -670,7 +676,7 @@ class FactorizedTransferFunction(TransferFunction):
               if self.dD is not None and other.dD is not None
               else None)
 
-        return self.with_(K=K, B=B, C=C, D=D, dK=dK, dB=dB, dC=dC, dD=dD)
+        return self.with_(K=K, B=B, C=C, D=D, dK=dK, dB=dB, dC=dC, dD=dD, parameters=Parameters.of(self, other))
 
     def __rmul__(self, other):
         if not hasattr(other, 'transfer_function'):

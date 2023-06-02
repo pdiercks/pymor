@@ -1,0 +1,8 @@
+FROM quay.io/podman/stable:v4.5.0
+
+RUN yum install -y python3-pip make git && \
+    pip3 install --no-cache-dir python-gitlab==3.14.0
+
+CMD /bin/bash
+
+WORKDIR /src

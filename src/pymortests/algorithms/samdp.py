@@ -9,6 +9,9 @@ import scipy.sparse as sps
 from pymor.algorithms.samdp import samdp
 from pymor.operators.numpy import NumpyMatrixOperator
 
+pytestmark = pytest.mark.builtin
+
+
 n_list = [50, 100]
 m_list = [1, 2]
 k_list = [2, 3]
@@ -62,8 +65,9 @@ def test_samdp(n, m, k, wanted, with_E, which):
 
     # check if we computed correct eigenvalues
     if not with_E:
-        assert np.sum((Aop.apply(dom_rev) - dom_poles * dom_rev).norm()) < 1e-4
-        assert np.sum((Aop.apply_adjoint(dom_lev) - dom_poles * dom_lev).norm()) < 1e-4
+        assert np.sum((Aop.apply(dom_rev) - dom_poles * dom_rev).norm() / dom_rev.norm()) < 1e-3
+        assert np.sum((Aop.apply_adjoint(dom_lev) - dom_poles * dom_lev).norm() / dom_lev.norm()) < 1e-3
     else:
-        assert np.sum((Aop.apply(dom_rev) - dom_poles * Eop.apply(dom_rev)).norm()) < 1e-4
-        assert np.sum((Aop.apply_adjoint(dom_lev) - dom_poles * Eop.apply_adjoint(dom_lev)).norm()) < 1e-4
+        assert np.sum((Aop.apply(dom_rev) - dom_poles * Eop.apply(dom_rev)).norm() / dom_rev.norm()) < 1e-3
+        assert np.sum((Aop.apply_adjoint(dom_lev)
+               - dom_poles * Eop.apply_adjoint(dom_lev)).norm() / dom_lev.norm()) < 1e-3

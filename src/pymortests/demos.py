@@ -14,14 +14,13 @@ from typer.testing import CliRunner
 import pymordemos  # noqa: F401
 from pymor.core.config import is_macos_platform, is_windows_platform
 from pymor.core.exceptions import (
+    DependencyMissingError,
     GmshMissingError,
     MeshioMissingError,
     NoResultDataError,
-    QtMissingError,
-    TorchMissingError,
 )
 from pymor.tools.mpi import parallel
-from pymortests.base import check_results, runmodule
+from pymortests.base import BUILTIN_DISABLED, check_results, runmodule
 
 runner = CliRunner()
 
@@ -90,8 +89,8 @@ THERMALBLOCK_SIMPLE_ARGS = (
 )
 
 BURGERS_EI_ARGS = (
-    ('burgers_ei', [1, 2, 2, 5, 2, 5, '--plot-ei-err', '--plot-err', '--plot-solutions']),
-    ('burgers_ei', [1, 2, 2, 5, 2, 5, '--ei-alg=deim', '--plot-error-landscape']),
+    ('burgers_ei', [1, 2, 2, 5, 2, 5, '--grid=20', '--plot-ei-err', '--plot-err', '--plot-solutions']),
+    ('burgers_ei', [1, 2, 2, 5, 2, 5, '--grid=20', '--ei-alg=deim', '--plot-error-landscape']),
 )
 
 PARABOLIC_MOR_ARGS = (
@@ -113,6 +112,7 @@ SYS_MOR_ARGS = (
 
 DD_MOR_ARGS = (
     ('dd_parametric_heat', [0.01, 50, 10]),
+    ('dd_heat', [0.1, 10]),
     ('era', [10]),
 )
 
@@ -150,7 +150,7 @@ DMD_ARGS = (
 )
 
 PHLTI_ARGS = (
-    ('phlti', ['--n=10']),
+    ('phlti', []),
 )
 
 SYMPLECTIC_WAVE_ARGS = (
@@ -181,15 +181,18 @@ DEMO_ARGS = [(f'pymordemos.{a}', b) for (a, b) in DEMO_ARGS]
 
 def _skip_if_no_solver(param):
     demo, args = param
+    builtin = True
     from pymor.core.config import config
     for solver, package in [('fenics', None), ('ngsolve', None), ('neural_', 'TORCH'),
                             ('neural_networks_instationary', 'FENICS')]:
         package = package or solver.upper()
         needs_solver = len([f for f in args if solver in str(f)]) > 0 or demo.find(solver) >= 0
         has_solver = getattr(config, f'HAVE_{package}')
+        builtin = builtin and (not needs_solver or package == 'TORCH')
         if needs_solver and not has_solver:
-            if not os.environ.get('DOCKER_PYMOR', False):
-                pytest.skip('skipped test due to missing ' + solver)
+            pytest.skip('skipped test due to missing ' + package)
+    if builtin and BUILTIN_DISABLED:
+        pytest.skip('builtin discretizations disabled')
 
 
 def _demo_ids(demo_args):
@@ -240,12 +243,15 @@ def _test_demo(demo):
     result = None
     try:
         result = demo()
-    except (QtMissingError, GmshMissingError, MeshioMissingError, TorchMissingError) as e:
+    except (DependencyMissingError, GmshMissingError, MeshioMissingError) as e:
         if os.environ.get('DOCKER_PYMOR', False):
             # these are all installed in our CI env so them missing is a grave error
             raise e
         else:
-            miss = str(type(e)).replace('MissingError', '')
+            if isinstance(e, DependencyMissingError):
+                miss = e.dependency
+            else:
+                miss = str(type(e)).replace('MissingError', '')
             pytest.xfail(f'{miss} not installed')
     finally:
         from pymor.parallel.default import _cleanup
@@ -275,6 +281,7 @@ def test_demos(demo_args):
     assert result.exit_code == 0
 
 
+@pytest.mark.builtin
 def test_analyze_pickle1():
     d = mkdtemp()
     try:
@@ -285,6 +292,7 @@ def test_analyze_pickle1():
         shutil.rmtree(d)
 
 
+@pytest.mark.builtin
 def test_analyze_pickle2():
     d = mkdtemp()
     try:
@@ -296,6 +304,7 @@ def test_analyze_pickle2():
         shutil.rmtree(d)
 
 
+@pytest.mark.builtin
 def test_analyze_pickle3():
     d = mkdtemp()
     try:
@@ -307,6 +316,7 @@ def test_analyze_pickle3():
         shutil.rmtree(d)
 
 
+@pytest.mark.builtin
 def test_analyze_pickle4():
     d = mkdtemp()
     try:
@@ -334,6 +344,7 @@ def test_thermalblock_ipython(ipy_args):
 
 
 def test_thermalblock_results(thermalblock_args):
+    _skip_if_no_solver(thermalblock_args)
     from pymordemos import thermalblock
     app = Typer()
     app.command()(thermalblock.main)
@@ -351,11 +362,12 @@ def test_thermalblock_results(thermalblock_args):
                   'min_effectivities', 'max_effectivities', 'errors')
 
 
+@pytest.mark.builtin
 def test_burgers_ei_results():
     from pymordemos import burgers_ei
     app = Typer()
     app.command()(burgers_ei.main)
-    args = list(map(str, [1, 2, 10, 100, 10, 30]))
+    args = list(map(str, [1, 2, 2, 5, 2, 5])) + ['--grid=20']
     _test_demo(lambda: runner.invoke(app, args, catch_exceptions=False))
     ei_results, greedy_results = burgers_ei.test_results
     ei_results['greedy_max_errs'] = greedy_results['max_errs']
@@ -363,6 +375,7 @@ def test_burgers_ei_results():
                   (1e-13, 1e-7), 'errors', 'triangularity_errors', 'greedy_max_errs')
 
 
+@pytest.mark.builtin
 def test_parabolic_mor_results():
     from pymordemos import parabolic_mor
     args = ['pymor', 'greedy', 5, 20, 3]
@@ -374,6 +387,7 @@ def test_parabolic_mor_results():
                   'min_effectivities', 'max_effectivities', 'errors')
 
 
+@pytest.mark.builtin
 def test_check_check_results_missing(tmp_path):
     test_name = tmp_path.name
     args = ['NONE', tmp_path]

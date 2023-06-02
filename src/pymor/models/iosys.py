@@ -676,13 +676,20 @@ class LTIModel(Model):
         else:
             E = BlockDiagonalOperator([self.E, other.E])
         if self.T is not None and other.T is not None:
+            if type(self.time_stepper) != type(other.time_stepper):  # noqa
+                raise TypeError('The time-steppers are not of the same type.')
+            T = min(self.T, other.T)
             initial_data = BlockColumnOperator([self.initial_data, other.initial_data])
             time_stepper = self.time_stepper
+            if (hasattr(self.time_stepper, 'nt') and hasattr(other.time_stepper, 'nt')
+                    and self.T / self.time_stepper.nt > other.T / other.time_stepper.nt):
+                time_stepper = other.time_stepper
         else:
+            T = None
             initial_data = None
             time_stepper = None
         return LTIModel(A, B, C, D, E, sampling_time=self.sampling_time,
-                        T=self.T, initial_data=initial_data, time_stepper=time_stepper, num_values=self.num_values,
+                        T=T, initial_data=initial_data, time_stepper=time_stepper, num_values=self.num_values,
                         solver_options=self.solver_options)
 
     def __sub__(self, other):
@@ -711,13 +718,20 @@ class LTIModel(Model):
         else:
             E = BlockDiagonalOperator([self.E, other.E])
         if self.T is not None and other.T is not None:
+            if type(self.time_stepper) != type(other.time_stepper):  # noqa
+                raise TypeError('The time-steppers are not of the same type.')
+            T = min(self.T, other.T)
             initial_data = BlockColumnOperator([self.initial_data, other.initial_data])
             time_stepper = self.time_stepper
+            if (hasattr(self.time_stepper, 'nt') and hasattr(other.time_stepper, 'nt')
+                    and self.T / self.time_stepper.nt > other.T / other.time_stepper.nt):
+                time_stepper = other.time_stepper
         else:
+            T = None
             initial_data = None
             time_stepper = None
         return LTIModel(A, B, C, D, E, sampling_time=self.sampling_time,
-                        T=self.T, initial_data=initial_data, time_stepper=time_stepper, num_values=self.num_values,
+                        T=T, initial_data=initial_data, time_stepper=time_stepper, num_values=self.num_values,
                         solver_options=self.solver_options)
 
     def impulse_resp(self, mu=None, return_solution=False):
@@ -820,6 +834,9 @@ class LTIModel(Model):
             Returned only when `return_solution` is `True`.
         """
         assert self.T is not None
+
+        if not isinstance(mu, Mu):
+            mu = self.parameters.parse(mu)
 
         # solution computation
         B_va = self.B.as_range_array(mu)
@@ -1115,7 +1132,8 @@ class LTIModel(Model):
 
         return h2_norm
 
-    def hinf_norm(self, mu=None, return_fpeak=False, ab13dd_equilibrate=False):
+    @defaults('tol')
+    def hinf_norm(self, mu=None, return_fpeak=False, ab13dd_equilibrate=False, tol=1e-10):
         r"""Compute the :math:`\mathcal{H}_\infty`-norm of the |LTIModel|.
 
         .. note::
@@ -1131,6 +1149,8 @@ class LTIModel(Model):
             Whether to return the frequency at which the maximum is achieved.
         ab13dd_equilibrate
             Whether `slycot.ab13dd` should use equilibration.
+        tol
+            Tolerance in norm computation.
 
         Returns
         -------
@@ -1142,7 +1162,7 @@ class LTIModel(Model):
         if 'hinf_norm' in self.presets:
             hinf_norm = self.presets['hinf_norm']
         else:
-            hinf_norm = self.linf_norm(mu=mu, return_fpeak=return_fpeak, ab13dd_equilibrate=ab13dd_equilibrate)
+            hinf_norm = self.linf_norm(mu=mu, return_fpeak=return_fpeak, ab13dd_equilibrate=ab13dd_equilibrate, tol=tol)
         assert hinf_norm >= 0
 
         return hinf_norm
@@ -1228,7 +1248,7 @@ class LTIModel(Model):
         return l2_norm
 
     @cached
-    def _linf_norm(self, mu=None, ab13dd_equilibrate=False):
+    def _linf_norm(self, mu=None, ab13dd_equilibrate=False, tol=1e-10):
         if 'fpeak' in self.presets:
             return spla.norm(self.transfer_function.eval_tf(self.presets['fpeak']), ord=2), self.presets['fpeak']
         elif not config.HAVE_SLYCOT:
@@ -1252,9 +1272,10 @@ class LTIModel(Model):
         equil = 'S' if ab13dd_equilibrate else 'N'
         jobd = 'Z' if isinstance(self.D, ZeroOperator) else 'D'
         A, B, C, D, E = (to_matrix(op, format='dense') for op in [A, B, C, D, E])
-        return ab13dd(dico, jobe, equil, jobd, self.order, self.dim_input, self.dim_output, A, E, B, C, D)
+        return ab13dd(dico, jobe, equil, jobd, self.order, self.dim_input, self.dim_output, A, E, B, C, D, tol=tol)
 
-    def linf_norm(self, mu=None, return_fpeak=False, ab13dd_equilibrate=False):
+    @defaults('tol')
+    def linf_norm(self, mu=None, return_fpeak=False, ab13dd_equilibrate=False, tol=1e-10):
         r"""Compute the :math:`\mathcal{L}_\infty`-norm of the |LTIModel|.
 
         The :math:`\mathcal{L}_\infty`-norm of an |LTIModel| is defined via
@@ -1273,6 +1294,8 @@ class LTIModel(Model):
             Whether to return the frequency at which the maximum is achieved.
         ab13dd_equilibrate
             Whether `slycot.ab13dd` should use equilibration.
+        tol
+            Tolerance in norm computation.
 
         Returns
         -------
@@ -1284,11 +1307,11 @@ class LTIModel(Model):
         if not return_fpeak and 'linf_norm' in self.presets:
             linf_norm = self.presets['linf_norm']
         elif not return_fpeak:
-            linf_norm = self.linf_norm(mu=mu, return_fpeak=True, ab13dd_equilibrate=ab13dd_equilibrate)[0]
+            linf_norm = self.linf_norm(mu=mu, return_fpeak=True, ab13dd_equilibrate=ab13dd_equilibrate, tol=tol)[0]
         elif {'fpeak', 'linf_norm'} <= self.presets.keys():
             linf_norm, fpeak = self.presets['linf_norm'], self.presets['fpeak']
         else:
-            linf_norm, fpeak = self._linf_norm(mu=mu, ab13dd_equilibrate=ab13dd_equilibrate)
+            linf_norm, fpeak = self._linf_norm(mu=mu, ab13dd_equilibrate=ab13dd_equilibrate, tol=tol)
 
         if return_fpeak:
             assert isinstance(fpeak, Number) and linf_norm >= 0
@@ -1847,7 +1870,8 @@ class PHLTIModel(Model):
         """
         return self.to_lti().h2_norm(mu=mu)
 
-    def hinf_norm(self, mu=None, return_fpeak=False, ab13dd_equilibrate=False):
+    @defaults('tol')
+    def hinf_norm(self, mu=None, return_fpeak=False, ab13dd_equilibrate=False, tol=1e-10):
         """Compute the H_infinity-norm.
 
         .. note::
@@ -1861,6 +1885,8 @@ class PHLTIModel(Model):
             Should the frequency at which the maximum is achieved should be returned.
         ab13dd_equilibrate
             Should `slycot.ab13dd` use equilibration.
+        tol
+            Tolerance in norm computation.
 
         Returns
         -------
@@ -1871,7 +1897,8 @@ class PHLTIModel(Model):
         """
         return self.to_lti().hinf_norm(mu=mu,
                                        return_fpeak=return_fpeak,
-                                       ab13dd_equilibrate=ab13dd_equilibrate)
+                                       ab13dd_equilibrate=ab13dd_equilibrate,
+                                       tol=tol)
 
     def hankel_norm(self, mu=None):
         """Compute the Hankel-norm.
@@ -2596,7 +2623,8 @@ class SecondOrderModel(Model):
         """
         return self.to_lti().h2_norm(mu=mu)
 
-    def hinf_norm(self, mu=None, return_fpeak=False, ab13dd_equilibrate=False):
+    @defaults('tol')
+    def hinf_norm(self, mu=None, return_fpeak=False, ab13dd_equilibrate=False, tol=1e-10):
         r"""Compute the :math:`\mathcal{H}_\infty`-norm.
 
         .. note::
@@ -2610,6 +2638,8 @@ class SecondOrderModel(Model):
             Should the frequency at which the maximum is achieved should be returned.
         ab13dd_equilibrate
             Should `slycot.ab13dd` use equilibration.
+        tol
+            Tolerance in norm computation.
 
         Returns
         -------
@@ -2620,7 +2650,8 @@ class SecondOrderModel(Model):
         """
         return self.to_lti().hinf_norm(mu=mu,
                                        return_fpeak=return_fpeak,
-                                       ab13dd_equilibrate=ab13dd_equilibrate)
+                                       ab13dd_equilibrate=ab13dd_equilibrate,
+                                       tol=tol)
 
     def hankel_norm(self, mu=None):
         """Compute the Hankel-norm.
@@ -3192,7 +3223,7 @@ class BilinearModel(Model):
         return string
 
 
-def _lti_to_poles_b_c(lti):
+def _lti_to_poles_b_c(lti, mu=None):
     """Compute poles and residues.
 
     Parameters
@@ -3200,6 +3231,8 @@ def _lti_to_poles_b_c(lti):
     lti
         |LTIModel| consisting of |Operators| that can be converted to |NumPy arrays|.
         The D operator is ignored.
+    mu
+        |Parameter values|.
 
     Returns
     -------
@@ -3210,14 +3243,14 @@ def _lti_to_poles_b_c(lti):
     c
         |NumPy array| of shape `(lti.order, lti.dim_output)`.
     """
-    A = to_matrix(lti.A, format='dense')
-    B = to_matrix(lti.B, format='dense')
-    C = to_matrix(lti.C, format='dense')
+    A = to_matrix(lti.A, format='dense', mu=mu)
+    B = to_matrix(lti.B, format='dense', mu=mu)
+    C = to_matrix(lti.C, format='dense', mu=mu)
     if isinstance(lti.E, IdentityOperator):
         poles, X = spla.eig(A)
         EX = X
     else:
-        E = to_matrix(lti.E, format='dense')
+        E = to_matrix(lti.E, format='dense', mu=mu)
         poles, X = spla.eig(A, E)
         EX = E @ X
     b = spla.solve(EX, B)
