@@ -2,7 +2,7 @@
 # Copyright pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (https://opensource.org/licenses/BSD-2-Clause)
 
-from numbers import Number
+from numbers import Integral, Number
 
 import numpy as np
 
@@ -214,7 +214,7 @@ class VectorArray(BasicObject):
 
         # normalize ind s.t. the length of the view does not change when
         # the array is appended to
-        if type(ind) is int or isinstance(ind, Number):
+        if isinstance(ind, Integral):
             if 0 <= ind < l:
                 ind = slice(ind, ind+1)
             elif ind >= l or ind < -l:
@@ -1013,9 +1013,10 @@ class VectorArrayImpl(BasicObject):
     The |VectorArray| base class defers all calls to interface methods to an
     internal `impl` object of this type. Indexing, error checking or non-standard
     inner products are handled by |VectorArray|. Possible indices are passed
-    to the methods of :class:`VectorArrayImpl` as `ind`, `oind` or `xind`
-    parameters. These can either be `None`, in case the array has not been indexed,
-    a `slice` object, or a Python list of non-negative numbers.
+    to the methods of :class:`~pymor.vectorarrays.interface.VectorArrayImpl` as
+    `ind`, `oind` or `xind` parameters. These can either be `None`, in case the
+    array has not been indexed, a `slice` object, or a Python list of
+    non-negative numbers.
     """
 
     @abstractmethod

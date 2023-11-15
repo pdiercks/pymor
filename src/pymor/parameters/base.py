@@ -35,7 +35,7 @@ class Parameters(SortedFrozenDict):
     __slots__ = ()
 
     def _post_init(self):
-        assert all(type(k) is str and type(v) is int and 0 <= v
+        assert all(isinstance(k, str) and isinstance(v, int) and 0 <= v
                    for k, v in self.items())
         assert self.get('t', 1) == 1, 'time parameter must have length 1'
 
@@ -117,7 +117,8 @@ class Parameters(SortedFrozenDict):
             Is raised if `mu` cannot be interpreted as |parameter values| for the
             given |Parameters|.
         """
-        from pymor.analyticalproblems.functions import ExpressionFunction, Function
+        from pymor.analyticalproblems.expressions import Array, Constant
+        from pymor.analyticalproblems.functions import ExpressionFunction, Function, SymbolicExpressionFunction
 
         def fail(msg):
             if isinstance(mu, dict):
@@ -137,20 +138,38 @@ class Parameters(SortedFrozenDict):
 
         # convert mu to dict
         if isinstance(mu, (Number, str, Function)):
-            assert self or fail('too many values')
-            assert len(self) == 1 or fail('not enough values')
-            mu = {next(iter(self.keys())): mu}
+            mu = [mu]
 
-        elif isinstance(mu, (tuple, list, np.ndarray)):
+        def convert_to_function(v):
+            if isinstance(v, Number):
+                return v
+            f = ExpressionFunction(v, dim_domain=1, variable='t') if isinstance(v, str) else v
+            f.dim_domain == 1 or \
+                fail(f'dim_domain of parameter function must be 1 (not {f.dim_domain}):\n'
+                     f'    {v}')
+            len(f.shape_range) <= 1 or \
+                fail(f'parameter function must be scalar- or vector-valued (not {f.shape_range}):\n'
+                     f'    {v}')
+            return f
+
+        if isinstance(mu, (tuple, list, np.ndarray)):
             if isinstance(mu, np.ndarray):
                 mu = mu.ravel()
             all(isinstance(v, (Number, str, Function)) for v in mu) or \
                 fail('not every element a number or function')
+
+            # first convert all strings to functions to get their shape
+            mu = [convert_to_function(v) for v in mu]
+
             parsed_mu = {}
             for k, v in self.items():
-                len(mu) >= v or fail('not enough values')
-                if len(mu) > 0 and isinstance(mu[0], (str, Function)):
+                if len(mu) > 0 and isinstance(mu[0], Function) and \
+                        len(mu[0].shape_range) == 1 and \
+                        (mu[0].shape_range[0] > 1 or v == 1):
                     p, mu = mu[0], mu[1:]
+                    p.shape_range[0] == v or \
+                        fail(f'shape of parameter function for parameter {k} must be {v} (not {p.shape_range[0]}):\n'
+                             f'    {p}')
                 else:
                     len(mu) >= v or fail('not enough values')
                     p, mu = mu[:v], mu[v:]
@@ -161,21 +180,55 @@ class Parameters(SortedFrozenDict):
         set(mu.keys()) == set(self.keys()) or fail('parameters not matching')
 
         def parse_value(k, v):
-            if isinstance(v, (Number, tuple, list, np.ndarray)):
-                if isinstance(v, Number):
-                    v = np.array([v])
-                elif isinstance(v, (tuple, list)):
-                    v = np.array(v)
+            if isinstance(v, Number):
+                v = np.array([v])
+                v = v.ravel()
+                len(v) == self[k] or fail(f'wrong dimension of parameter value {k}')
+                return v
+            elif isinstance(v, np.ndarray):
                 v = v.ravel()
                 len(v) == self[k] or fail(f'wrong dimension of parameter value {k}')
                 return v
             elif isinstance(v, (str, Function)):
-                if isinstance(v, str):
-                    v = ExpressionFunction(v, dim_domain=1, variable='t')
-                v.dim_domain == 1 or fail(f'wrong domain dimension of parameter function {k}')
+                v = convert_to_function(v)
+
+                # convert scalar-valued functions to functions 1D shape_range
+                if v.shape_range == () and self[k] == 1 and isinstance(v, SymbolicExpressionFunction):
+                    v = SymbolicExpressionFunction(Array([v.expression_obj]), dim_domain=1, variable='t')
+
                 len(v.shape_range) == 1 or fail(f'wrong shape_range of parameter function {k}')
-                v.shape_range[0] == self[k] or fail(f'wrong range dimension of prameter function {k}')
+                v.shape_range[0] == self[k] or fail(f'wrong range dimension of parameter function {k}')
                 return v
+            elif isinstance(v, (tuple, list)):
+                all(isinstance(vv, (Number, str, Function)) for vv in v) or \
+                    fail(f"invalid value type '{type(v)}' for parameter {k}")
+                v = [convert_to_function(vv) for vv in v]
+                if any(isinstance(vv, Function) for vv in v):
+                    len(v) == self[k] or fail(f'wrong dimension of parameter value {k}')
+                    funcs = []
+                    for i, vv in enumerate(v):
+                        if isinstance(vv, Number):
+                            f = SymbolicExpressionFunction(Constant(vv), dim_domain=1, variable='t')
+                        else:
+                            f = vv
+
+                        f.dim_domain == 1 or fail(f'wrong domain dimension of parameter function {k}')
+
+                        # convert functions to scalar-valued functions if possible
+                        if f.shape_range == (1,) and isinstance(f, SymbolicExpressionFunction):
+                            f = SymbolicExpressionFunction(f.expression_obj[0], dim_domain=1, variable='t')
+
+                        f.shape_range == () or \
+                            fail(f'parameter function {k}[{i}] not scalar-valued: {vv}')
+                        funcs.append(f)
+                    v = SymbolicExpressionFunction(Array([f.expression_obj for f in funcs]),
+                                                   dim_domain=1, variable='t')
+                    return v
+                else:
+                    v = np.array(v)
+                    v = v.ravel()
+                    len(v) == self[k] or fail(f'wrong dimension of parameter value {k}')
+                    return v
             else:
                 fail(f"invalid value type '{type(v)}' for parameter {k}")
 
@@ -277,6 +330,8 @@ class Mu(FrozenDict):
     """
 
     __slots__ = ('_raw_values')
+    __array_priority__ = 100.0
+    __array_ufunc__ = None
 
     def __new__(cls, *args, **kwargs):
         raw_values = dict(*args, **kwargs)
@@ -373,6 +428,31 @@ class Mu(FrozenDict):
             except Exception:
                 return False
         return self.keys() == mu.keys() and all(np.array_equal(v, mu[k]) for k, v in self.items())
+
+    def __neg__(self):
+        return Mu({key: -value for key, value in self.items()})
+
+    def __add__(self, other):
+        if not isinstance(other, Mu):
+            other = self.parameters.parse(other)
+        assert self.keys() == other.keys()
+        return Mu({key: self[key] + other[key] for key in self})
+
+    def __radd__(self, other):
+        return self + other
+
+    def __sub__(self, other):
+        return self + -other
+
+    def __rsub__(self, other):
+        return -self + other
+
+    def __mul__(self, other):
+        assert isinstance(other, Number)
+        return Mu({key: self[key] * other for key in self})
+
+    def __rmul__(self, other):
+        return self * other
 
     def __str__(self):
         def format_value(k, v):
@@ -540,14 +620,13 @@ class ParameterSpace(ParametricObject):
         -------
         List of |parameter value| dicts.
         """
-        if isinstance(counts, dict):
-            pass
-        else:
+        if not isinstance(counts, dict):
             counts = {k: counts for k in self.parameters}
 
-        linspaces = tuple(np.linspace(self.ranges[k][0], self.ranges[k][1], num=counts[k]) for k in self.parameters)
-        iters = tuple(product(ls, repeat=max(0, np.zeros(sps).size))
-                      for ls, sps in zip(linspaces, self.parameters.values()))
+        linspaces = tuple(np.linspace(self.ranges[k][0], self.ranges[k][1], num=counts[k])
+                          for k in self.parameters)
+        iters = tuple(product(linspace, repeat=size)
+                      for linspace, size in zip(linspaces, self.parameters.values()))
         return [Mu((k, np.array(v)) for k, v in zip(self.parameters, i))
                 for i in product(*iters)]
 
@@ -565,8 +644,55 @@ class ParameterSpace(ParametricObject):
         -------
         The sampled |parameter values|.
         """
-        get_param = lambda: Mu(((k, get_rng().uniform(self.ranges[k][0], self.ranges[k][1], size))
-                               for k, size in self.parameters.items()))
+        get_param = lambda: Mu((k, get_rng().uniform(self.ranges[k][0], self.ranges[k][1], size))
+                               for k, size in self.parameters.items())
+        if count is None:
+            return get_param()
+        else:
+            return [get_param() for _ in range(count)]
+
+    def sample_logarithmic_uniformly(self, counts):
+        """Logarithmically uniform sample |parameter values| from the space.
+
+        Parameters
+        ----------
+        counts
+            Number of samples to take per parameter and component
+            of the parameter. Either a dict of counts per |Parameter|
+            or a single count that is taken for each parameter in |Parameters|.
+
+        Returns
+        -------
+        List of |parameter value| dicts.
+        """
+        if not isinstance(counts, dict):
+            counts = {k: counts for k in self.parameters}
+
+        logspaces = tuple(np.geomspace(self.ranges[k][0], self.ranges[k][1], num=counts[k])
+                          for k in self.parameters)
+        iters = tuple(product(logspace, repeat=size)
+                      for logspace, size in zip(logspaces, self.parameters.values()))
+        return [Mu((k, np.array(v)) for k, v in zip(self.parameters, i))
+                for i in product(*iters)]
+
+    def sample_logarithmic_randomly(self, count=None):
+        """Logarithmically scaled random sample |parameter values| from the space.
+
+        Parameters
+        ----------
+        count
+            If `None`, a single dict `mu` of |parameter values| is returned.
+            Otherwise, the number of logarithmically random samples to generate and return as
+            a list of |parameter values| dicts.
+
+        Returns
+        -------
+        The sampled |parameter values|.
+        """
+        get_param = lambda: Mu((k, np.exp(get_rng().uniform(np.log(self.ranges[k][0]),
+                                                            np.log( self.ranges[k][1]),
+                                                            size)))
+                               for k, size in self.parameters.items())
         if count is None:
             return get_param()
         else:

@@ -17,6 +17,7 @@ from pymor.algorithms.lyapunov import (
     solve_disc_lyap_lrcf,
 )
 from pymor.algorithms.riccati import solve_pos_ricc_lrcf, solve_ricc_lrcf
+from pymor.algorithms.simplify import contract, expand
 from pymor.algorithms.timestepping import DiscreteTimeStepper, TimeStepper
 from pymor.algorithms.to_matrix import to_matrix
 from pymor.analyticalproblems.functions import GenericFunction
@@ -39,11 +40,13 @@ from pymor.operators.constructions import (
     LincombOperator,
     LinearInputOperator,
     LowRankOperator,
+    VectorArrayOperator,
     VectorOperator,
     ZeroOperator,
 )
 from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.parameters.base import Mu, Parameters
+from pymor.parameters.functionals import ExpressionParameterFunctional, ProjectionParameterFunctional
 from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.interface import VectorArray
 
@@ -215,22 +218,25 @@ class LTIModel(Model):
         else:
             presets = {}
 
-        assert solver_options is None or solver_options.keys() <= {'lyap_lrcf', 'lyap_dense'}
+        assert solver_options is None or solver_options.keys() <= {'lyap_lrcf', 'lyap_dense',
+                                                                   'ricc_lrcf', 'ricc_dense', 'ricc_pos_lrcf'}
 
         super().__init__(dim_input=B.source.dim, error_estimator=error_estimator, visualizer=visualizer, name=name)
         self.__auto_init(locals())
         self.solution_space = A.source
         self.dim_output = C.range.dim
 
-        K = lambda s: s * self.E - self.A
-        B = lambda s: self.B
-        C = lambda s: self.C
-        D = lambda s: self.D
-        dK = lambda s: self.E
-        dB = lambda s: ZeroOperator(self.B.range, self.B.source)
-        dC = lambda s: ZeroOperator(self.C.range, self.C.source)
-        dD = lambda s: ZeroOperator(self.D.range, self.D.source)
         parameters = Parameters.of(self.A, self.B, self.C, self.D, self.E)
+        s = ProjectionParameterFunctional('s')
+
+        K = s * self.E - self.A
+        B = self.B
+        C = self.C
+        D = self.D
+        dK = self.E
+        dB = ZeroOperator(self.B.range, self.B.source)
+        dC = ZeroOperator(self.C.range, self.C.source)
+        dD = ZeroOperator(self.D.range, self.D.source)
 
         self.transfer_function = FactorizedTransferFunction(
             self.dim_input, self.dim_output,
@@ -290,7 +296,7 @@ class LTIModel(Model):
             intermediate vector that is calculated is returned.
         presets
             A `dict` of preset attributes or `None`.
-            See :meth:`~pymor.models.iosys.LTIModel.__init__`.
+            See |LTIModel|.
         state_id
             Id of the state space.
         solver_options
@@ -390,7 +396,7 @@ class LTIModel(Model):
             intermediate vector that is calculated is returned.
         presets
             A `dict` of preset attributes or `None`.
-            See :meth:`~pymor.models.iosys.LTIModel.__init__`.
+            See |LTIModel|.
         state_id
             Id of the state space.
         solver_options
@@ -482,7 +488,7 @@ class LTIModel(Model):
             intermediate vector that is calculated is returned.
         presets
             A `dict` of preset attributes or `None`.
-            See :meth:`~pymor.models.iosys.LTIModel.__init__`.
+            See |LTIModel|.
         state_id
             Id of the state space.
         solver_options
@@ -567,7 +573,7 @@ class LTIModel(Model):
             intermediate vector that is calculated is returned.
         presets
             A `dict` of preset attributes or `None`.
-            See :meth:`~pymor.models.iosys.LTIModel.__init__`.
+            See |LTIModel|.
         state_id
             Id of the state space.
         solver_options
@@ -698,7 +704,7 @@ class LTIModel(Model):
 
     def __neg__(self):
         """Negate the |LTIModel|."""
-        return self.with_(C=-self.C, D=-self.D)
+        return self.with_(C=-self.C, D=-self.D, new_type=LTIModel)  # ensure that __neg__ works in subclasses
 
     def __mul__(self, other):
         """Postmultiply by an |LTIModel|."""
@@ -804,8 +810,8 @@ class LTIModel(Model):
         y = np.empty((len(Xs[0]), self.dim_output, self.dim_input))
         for i, X in enumerate(Xs):
             y[:, :, i] = self.C.apply(X, mu=mu).to_numpy()
-        if self.sampling_time > 0 and isinstance(self.D, ZeroOperator):
-            y[0] += to_matrix(self.D, mu=mu, format='dense')
+        if self.sampling_time > 0 and not isinstance(self.D, ZeroOperator):
+            y[0] += to_matrix(self.D, mu=mu, format='dense') / self.sampling_time
 
         if return_solution:
             return y, Xs
@@ -917,6 +923,7 @@ class LTIModel(Model):
         A = self.A.assemble(mu)
         B = self.B
         C = self.C
+        D = self.D
         E = self.E.assemble(mu) if not isinstance(self.E, IdentityOperator) else None
         options_lrcf = self.solver_options.get('lyap_lrcf') if self.solver_options else None
         options_dense = self.solver_options.get('lyap_dense') if self.solver_options else None
@@ -953,15 +960,23 @@ class LTIModel(Model):
         elif typ == 'lqg_o_lrcf':
             return solve_ricc_lrcf(A, E, B.as_range_array(mu=mu), C.as_source_array(mu=mu),
                                    trans=True, options=options_ricc_lrcf)
+        elif typ == 'pr_c_lrcf':
+            return solve_pos_ricc_lrcf(A, E, A.source.zeros(), -C.as_source_array(mu=mu),
+                                       R=to_matrix(D + D.H, 'dense'), S=B.as_range_array(mu=mu),
+                                       trans=False, options=options_ricc_pos_lrcf)
+        elif typ == 'pr_o_lrcf':
+            return solve_pos_ricc_lrcf(A, E, -B.as_range_array(mu=mu), A.source.zeros(),
+                                       R=to_matrix(D + D.H, 'dense'), S=C.as_source_array(mu=mu),
+                                       trans=True, options=options_ricc_pos_lrcf)
         elif typ[0] == 'br_c_lrcf':
             return solve_pos_ricc_lrcf(A, E, B.as_range_array(mu=mu), C.as_source_array(mu=mu),
-                                       R=(typ[1]**2 * np.eye(self.dim_output)
+                                       R=(typ[1] ** 2 * np.eye(self.dim_output)
                                           if typ[1] != 1
                                           else None),
                                        trans=False, options=options_ricc_pos_lrcf)
         elif typ[0] == 'br_o_lrcf':
             return solve_pos_ricc_lrcf(A, E, B.as_range_array(mu=mu), C.as_source_array(mu=mu),
-                                       R=(typ[1]**2 * np.eye(self.dim_input)
+                                       R=(typ[1] ** 2 * np.eye(self.dim_input)
                                           if typ[1] != 1
                                           else None),
                                        trans=True, options=options_ricc_pos_lrcf)
@@ -988,6 +1003,10 @@ class LTIModel(Model):
               Gramian,
             - `('br_o_lrcf', gamma)`: low-rank Cholesky factor of the "observability" bounded real
               Gramian.
+            - `'pr_c_lrcf'`: low-rank Cholesky factor of the "controllability" positive real
+              Gramian,
+            - `'pr_o_lrcf'`: low-rank Cholesky factor of the "observability" positive real
+              Gramian.
 
             .. note::
                 For `'*_lrcf'` types, the method assumes the system is asymptotically stable.
@@ -995,6 +1014,8 @@ class LTIModel(Model):
                 has a unique solution, i.e. no pair of system poles adds to zero in the
                 continuous-time case and no pair of system poles multiplies to one in the
                 discrete-time case.
+                Additionally, for `'pr_c_lrcf'` and `'pr_o_lrcf'`, it is assumed that `D + D^T` is
+                invertible.
         mu
             |Parameter values|.
 
@@ -1003,7 +1024,8 @@ class LTIModel(Model):
         If typ ends with `'_lrcf'`, then the Gramian factor as a |VectorArray| from `self.A.source`.
         If typ ends with `'_dense'`, then the Gramian as a |NumPy array|.
         """
-        assert (typ in ('c_lrcf', 'o_lrcf', 'c_dense', 'o_dense', 'bs_c_lrcf', 'bs_o_lrcf', 'lqg_c_lrcf', 'lqg_o_lrcf')
+        assert (typ in ('c_lrcf', 'o_lrcf', 'c_dense', 'o_dense', 'bs_c_lrcf', 'bs_o_lrcf', 'lqg_c_lrcf', 'lqg_o_lrcf',
+                        'pr_c_lrcf', 'pr_o_lrcf')
                 or isinstance(typ, tuple) and len(typ) == 2 and typ[0] in ('br_c_lrcf', 'br_o_lrcf'))
 
         if ((isinstance(typ, str) and (typ.startswith('bs') or typ.startswith('lqg')) or isinstance(typ, tuple))
@@ -1039,6 +1061,7 @@ class LTIModel(Model):
             - `'lyap'`: Lyapunov Gramian,
             - `'bs'`: Bernoulli stabilized Gramian,
             - `'lqg'`: LQG Gramian,
+            - `'pr'`: positive real Gramian,
             - `('br', gamma)`: bounded real Gramian,
         mu
             |Parameter values|.
@@ -1064,6 +1087,9 @@ class LTIModel(Model):
         elif typ == 'lqg':
             cf = self.gramian('lqg_c_lrcf', mu=mu)
             of = self.gramian('lqg_o_lrcf', mu=mu)
+        elif typ == 'pr':
+            cf = self.gramian('pr_c_lrcf', mu=mu)
+            of = self.gramian('pr_o_lrcf', mu=mu)
         elif isinstance(typ, tuple) and typ[0] == 'br' and typ[1] > 0:
             gamma = typ[1]
             cf = self.gramian(('br_c_lrcf', gamma), mu=mu)
@@ -1138,7 +1164,7 @@ class LTIModel(Model):
 
         .. note::
             Assumes the system is asymptotically stable. Under this is assumption the
-            :math:`\mathcal{H}_\infty`-norm is equal to the :math:`\mathcal{H}_\infty`-norm.
+            :math:`\mathcal{H}_\infty`-norm is equal to the :math:`\mathcal{L}_\infty`-norm.
             Accordingly, this method calls :meth:`~pymor.models.iosys.LTIModel.linf_norm`.
 
         Parameters
@@ -1161,11 +1187,19 @@ class LTIModel(Model):
         """
         if 'hinf_norm' in self.presets:
             hinf_norm = self.presets['hinf_norm']
+        elif not return_fpeak:
+            hinf_norm = self.linf_norm(mu=mu, ab13dd_equilibrate=ab13dd_equilibrate, tol=tol)
         else:
-            hinf_norm = self.linf_norm(mu=mu, return_fpeak=return_fpeak, ab13dd_equilibrate=ab13dd_equilibrate, tol=tol)
-        assert hinf_norm >= 0
+            hinf_norm, fpeak = self.linf_norm(
+                mu=mu, return_fpeak=return_fpeak, ab13dd_equilibrate=ab13dd_equilibrate, tol=tol
+            )
 
-        return hinf_norm
+        if return_fpeak:
+            assert isinstance(fpeak, Number) and hinf_norm >= 0
+            return hinf_norm, fpeak
+        else:
+            assert hinf_norm >= 0
+            return hinf_norm
 
     def hankel_norm(self, mu=None):
         """Compute the Hankel-norm of the |LTIModel|.
@@ -1348,7 +1382,7 @@ class LTIModel(Model):
         if self.ast_pole_data is not None:
             if isinstance(E, IdentityOperator):
                 E = None
-            if type(self.ast_pole_data) == dict:
+            if isinstance(self.ast_pole_data, dict):
                 ew, rev = eigs(A, E, left_evp=False, **self.ast_pole_data)
                 ast_idx = (ew.real > 0)
                 ast_ews = ew[ast_idx]
@@ -1361,7 +1395,7 @@ class LTIModel(Model):
                     _, lev = eigs(A, E, k=1, l=3, sigma=ae, left_evp=True)
                     ast_levs.append(lev)
                 return ast_levs, ast_ews, rev[ast_idx]
-            elif type(self.ast_pole_data) == list:
+            elif isinstance(self.ast_pole_data, list):
                 assert all(np.real(self.ast_pole_data) > 0)
                 ast_pole_data = np.sort(self.ast_pole_data)
                 ast_levs = A.source.empty(reserve=len(ast_pole_data))
@@ -1427,17 +1461,15 @@ class LTIModel(Model):
         """
         assert isinstance(M, MoebiusTransformation)
 
-        a, b, c, d = M.coefficients
-        s = a * d - b * c
-        v = np.sqrt(np.abs(s))
+        a, b, c, d = MoebiusTransformation(M.coefficients, normalize=True).coefficients
 
-        Et = d * self.E + c * self.A
-        At = a * self.A + b * self.E
-        Bt = np.sign(s) * v * self.B
-        Ct = v * self.C @ InverseOperator(Et)
-        Dt = self.D - c * self.C @ InverseOperator(Et) @ self.B
+        Et = a * self.E - c * self.A
+        At = d * self.A - b * self.E
+        C = VectorArrayOperator(Et.apply_inverse_adjoint(self.C.H.as_range_array())).H
+        Ct = C @ self.E
+        Dt = self.D + c * C @ self.B
 
-        return LTIModel(At, Bt, Ct, D=Dt, E=Et, sampling_time=sampling_time)
+        return LTIModel(At, self.B, Ct, D=Dt, E=Et, sampling_time=sampling_time)
 
     def to_discrete(self, sampling_time, method='Tustin', w0=0):
         """Converts a continuous-time |LTIModel| to a discrete-time |LTIModel|.
@@ -1465,7 +1497,7 @@ class LTIModel(Model):
         assert sampling_time > 0
         assert isinstance(w0, Number)
         x = 2 / sampling_time if w0 == 0 else w0 / np.tan(w0 * sampling_time / 2)
-        c2d = BilinearTransformation(x).inverse()
+        c2d = BilinearTransformation(x)
         return self.moebius_substitution(c2d, sampling_time=sampling_time)
 
     def to_continuous(self, method='Tustin', w0=0):
@@ -1490,28 +1522,42 @@ class LTIModel(Model):
         assert self.sampling_time > 0
         assert isinstance(w0, Number)
         x = 2 / self.sampling_time if w0 == 0 else w0 / np.tan(w0 * self.sampling_time / 2)
-        d2c = BilinearTransformation(x)
+        d2c = BilinearTransformation(x).inverse()
         return self.moebius_substitution(d2c, sampling_time=0)
 
 
-class PHLTIModel(Model):
+class PHLTIModel(LTIModel):
     r"""Class for (continuous) port-Hamiltonian linear time-invariant systems.
 
     This class describes input-state-output systems given by
 
     .. math::
-        E(\mu) \dot{x}(t, \mu) & = (J(\mu) - R(\mu)) x(t, \mu) + (G(\mu) - P(\mu)) u(t), \\
-                     y(t, \mu) & = (G(\mu) + P(\mu))^T x(t, \mu) + (S(\mu) - N(\mu)) u(t),
+        E(\mu) \dot{x}(t, \mu) & = (J(\mu) - R(\mu)) Q(\mu)   x(t, \mu) + (G(\mu) - P(\mu)) u(t), \\
+                     y(t, \mu) & = (G(\mu) + P(\mu))^T Q(\mu) x(t, \mu) + (S(\mu) - N(\mu)) u(t),
 
-    with :math:`E(\mu) \succeq 0`, :math:`J(\mu) = -J(\mu)^T`, :math:`N(\mu) = -N(\mu)^T` and
+    where :math:`H(\mu) = Q(\mu)^T E(\mu)`,
 
     .. math::
-        \mathcal{R}(\mu) =
+        \Gamma(\mu) =
+        \begin{bmatrix}
+            J(\mu) & G(\mu) \\
+            -G(\mu)^T & N(\mu)
+        \end{bmatrix},
+        \text{ and }
+        \mathcal{W}(\mu) =
         \begin{bmatrix}
             R(\mu) & P(\mu) \\
             P(\mu)^T & S(\mu)
         \end{bmatrix}
-        \succeq 0.
+
+    satisfy
+    :math:`H(\mu) = H(\mu)^T \succ 0`,
+    :math:`\Gamma(\mu)^T = -\Gamma(\mu)`, and
+    :math:`\mathcal{W}(\mu) = \mathcal{W}(\mu)^T \succcurlyeq 0`.
+
+    A dynamical system of this form, together with a given quadratic (energy) function
+    :math:`\mathcal{H}(x, \mu) = \tfrac{1}{2} x^T H(\mu) x`, typically called Hamiltonian,
+    is called a port-Hamiltonian system.
 
     All methods related to the transfer function
     (e.g., frequency response calculation and Bode plots)
@@ -1533,6 +1579,8 @@ class PHLTIModel(Model):
         The |Operator| N or `None` (then N is assumed to be zero).
     E
         The |Operator| E or `None` (then E is assumed to be identity).
+    Q
+        The |Operator| Q or `None` (then Q is assumed to be identity).
     solver_options
         The solver options to use to solve the Lyapunov equations.
     name
@@ -1560,13 +1608,15 @@ class PHLTIModel(Model):
         The |Operator| N.
     E
         The |Operator| E.
+    Q
+        The |Operator| Q.
     transfer_function
         The transfer function.
     """
 
     cache_region = 'memory'
 
-    def __init__(self, J, R, G, P=None, S=None, N=None, E=None,
+    def __init__(self, J, R, G, P=None, S=None, N=None, E=None, Q=None,
                  solver_options=None, error_estimator=None, visualizer=None, name=None):
         assert J.linear
         assert J.source == J.range
@@ -1598,38 +1648,67 @@ class PHLTIModel(Model):
         assert E.source == E.range
         assert E.source == J.source
 
-        assert solver_options is None or solver_options.keys() <= {'lyap_lrcf', 'lyap_dense'}
+        Q = Q or IdentityOperator(J.source)
+        assert Q.linear
+        assert Q.source == Q.range
+        assert Q.source == J.source
 
-        super().__init__(dim_input=G.source.dim, error_estimator=error_estimator, visualizer=visualizer, name=name)
+        super().__init__(A=J - R if isinstance(Q, IdentityOperator) else contract((J - R) @ Q),
+                         B=G - P,
+                         C=(G + P).H if isinstance(Q, IdentityOperator) else (G + P).H @ Q,
+                         D=S - N, E=E,
+                         solver_options=solver_options, error_estimator=error_estimator, visualizer=visualizer,
+                         name=name)
         self.__auto_init(locals())
-        self.solution_space = J.source
-        self.dim_output = G.source.dim
-        self.sampling_time = 0
 
-        K = lambda s: s * self.E - (self.J - self.R)
-        B = lambda s: self.G - self.P
-        C = lambda s: (self.G + self.P).H
-        D = lambda s: self.S - self.N
-        dK = lambda s: self.E
-        dB = lambda s: ZeroOperator(self.G.range, self.G.source)
-        dC = lambda s: ZeroOperator(self.G.source, self.G.range)
-        dD = lambda s: ZeroOperator(self.S.range, self.S.source)
-        parameters = Parameters.of(self.J, self.R, self.G, self.P, self.S, self.N, self.E)
+    def to_berlin_form(self):
+        """Convert the |PHLTIModel| into its Berlin form.
 
-        self.transfer_function = FactorizedTransferFunction(
-            self.dim_input, self.dim_output,
-            K, B, C, D, dK, dB, dC, dD,
-            parameters=parameters, name=self.name + '_transfer_function')
+        Returns a |PHLTIModel| with :math:`Q=I`, by left multiplication with :math:`Q^T`.
 
-        self._lti_model = LTIModel(A=self.J - self.R,
-                                   B=self.G - self.P,
-                                   C=(self.G + self.P).H,
-                                   D=self.S - self.N,
-                                   E=self.E,
-                                   solver_options=self.solver_options,
-                                   error_estimator=self.error_estimator,
-                                   visualizer=self.visualizer,
-                                   name=self.name + '_as_lti')
+        Returns
+        -------
+        model
+            |PHLTIModel| with :math:`Q=I`.
+        """
+        if isinstance(self.Q, IdentityOperator):
+            return self
+
+        E = contract(expand(self.Q.H @ self.E))
+        J = contract(expand(self.Q.H @ self.J @ self.Q))
+        R = contract(expand(self.Q.H @ self.R @ self.Q))
+        G = contract(expand(self.Q.H @ self.G))
+        P = contract(expand(self.Q.H @ self.P))
+
+        return self.with_(E=E, J=J, R=R, G=G, P=P, Q=None)
+
+    @classmethod
+    def from_passive_LTIModel(cls, model):
+        """
+        Convert a passive |LTIModel| to a |PHLTIModel|.
+
+        Parameters
+        ----------
+        model
+            The passive |LTIModel| to convert.
+        generalized
+            If `True`, the resulting |PHLTIModel| will have :math:`Q=I`.
+        """
+        # Determine solution of KYP inequality
+        L = VectorArrayOperator(model.gramian('pr_o_lrcf'), adjoint=True)
+        X = L.H @ L
+
+        Q = X
+        E = model.E
+        J = 0.5 * (model.A @ InverseOperator(X) - InverseOperator(X) @ model.A.H)
+        R = -0.5 * (model.A @ InverseOperator(X) + InverseOperator(X) @ model.A.H)
+        G = 0.5 * (InverseOperator(X) @ model.C.H + model.B)
+        P = 0.5 * (InverseOperator(X) @ model.C.H - model.B)
+        S = 0.5 * (model.D + model.D.H)
+        N = 0.5 * (model.D - model.D.H)
+
+        return cls(E=E, J=J, R=R, G=G, P=P, S=S, N=N, Q=Q, solver_options=model.solver_options,
+                   error_estimator=model.error_estimator, visualizer=model.visualizer, name=model.name)
 
     def __str__(self):
         string = (
@@ -1648,7 +1727,7 @@ class PHLTIModel(Model):
         return string
 
     @classmethod
-    def from_matrices(cls, J, R, G, P=None, S=None, N=None, E=None,
+    def from_matrices(cls, J, R, G, P=None, S=None, N=None, E=None, Q=None,
                       state_id='STATE', solver_options=None, error_estimator=None,
                       visualizer=None, name=None):
         """Create |PHLTIModel| from matrices.
@@ -1669,6 +1748,8 @@ class PHLTIModel(Model):
             The |NumPy array| or |SciPy spmatrix| N or `None` (then N is assumed to be zero).
         E
             The |NumPy array| or |SciPy spmatrix| E or `None` (then E is assumed to be identity).
+        Q
+            The |NumPy array| or |SciPy spmatrix| Q or `None` (then Q is assumed to be identity).
         state_id
             Id of the state space.
         solver_options
@@ -1697,6 +1778,7 @@ class PHLTIModel(Model):
         assert S is None or isinstance(S, (np.ndarray, sps.spmatrix))
         assert N is None or isinstance(N, (np.ndarray, sps.spmatrix))
         assert E is None or isinstance(E, (np.ndarray, sps.spmatrix))
+        assert Q is None or isinstance(Q, (np.ndarray, sps.spmatrix))
 
         J = NumpyMatrixOperator(J, source_id=state_id, range_id=state_id)
         R = NumpyMatrixOperator(R, source_id=state_id, range_id=state_id)
@@ -1709,8 +1791,10 @@ class PHLTIModel(Model):
             N = NumpyMatrixOperator(N)
         if E is not None:
             E = NumpyMatrixOperator(E, source_id=state_id, range_id=state_id)
+        if Q is not None:
+            Q = NumpyMatrixOperator(Q, source_id=state_id, range_id=state_id)
 
-        return cls(J, R, G, P, S, N, E,
+        return cls(J=J, R=R, G=G, P=P, S=S, N=N, E=E, Q=Q,
                    solver_options=solver_options, error_estimator=error_estimator, visualizer=visualizer,
                    name=name)
 
@@ -1726,13 +1810,15 @@ class PHLTIModel(Model):
         G
             The |NumPy array| or |SciPy spmatrix| G.
         P
-            The |NumPy array| or |SciPy spmatrix| P.
+            The |NumPy array| or |SciPy spmatrix| P or `None` (if P is a `ZeroOperator`).
         S
-            The |NumPy array| or |SciPy spmatrix| S or `None` (if Cv is a `ZeroOperator`).
+            The |NumPy array| or |SciPy spmatrix| S or `None` (if S is a `ZeroOperator`).
         N
-            The |NumPy array| or |SciPy spmatrix| N or `None` (if Cv is a `ZeroOperator`).
+            The |NumPy array| or |SciPy spmatrix| N or `None` (if N is a `ZeroOperator`).
         E
-            The |NumPy array| or |SciPy spmatrix| E.
+            The |NumPy array| or |SciPy spmatrix| E or `None` (if E is an `IdentityOperator`).
+        Q
+            The |NumPy array| or |SciPy spmatrix| Q  or `None` (if Q is an `IdentityOperator`).
         """
         J = to_matrix(self.J)
         R = to_matrix(self.R)
@@ -1741,244 +1827,32 @@ class PHLTIModel(Model):
         S = None if isinstance(self.S, ZeroOperator) else to_matrix(self.S)
         N = None if isinstance(self.N, ZeroOperator) else to_matrix(self.N)
         E = None if isinstance(self.E, IdentityOperator) else to_matrix(self.E)
+        Q = None if isinstance(self.Q, IdentityOperator) else to_matrix(self.Q)
 
-        return J, R, G, P, S, N, E
-
-    def to_lti(self):
-        r"""Return a standard linear time-invariant system representation.
-
-        The representation
-
-        .. math::
-            A = J - R,\qquad B = G - P,\qquad C = (G + P)^T,\qquad D = S - N,\qquad E = E
-
-        is returned.
-
-        Returns
-        -------
-        lti
-            |LTIModel| equivalent to the port-Hamiltonian model.
-        """
-        return self._lti_model
-
-    def poles(self, mu=None):
-        """Compute system poles.
-
-        .. note::
-            Assumes the systems is small enough to use a dense eigenvalue solver.
-
-        Parameters
-        ----------
-        mu
-            |Parameter values|.
-
-        Returns
-        -------
-        One-dimensional |NumPy array| of system poles.
-        """
-        return self.to_lti().poles(mu=mu)
-
-    def gramian(self, typ, mu=None):
-        """Compute a Gramian.
-
-        Parameters
-        ----------
-        typ
-            The type of the Gramian:
-
-            - `'c_lrcf'`: low-rank Cholesky factor of the controllability Gramian,
-            - `'o_lrcf'`: low-rank Cholesky factor of the observability Gramian,
-            - `'c_dense'`: dense controllability Gramian,
-            - `'o_dense'`: dense observability Gramian.
-
-            .. note::
-                For `'*_lrcf'` types, the method assumes the system is asymptotically stable.
-                For `'*_dense'` types, the method assumes that the underlying Lyapunov equation
-                has a unique solution, i.e. no pair of system poles adds to zero in the
-                continuous-time case and no pair of system poles multiplies to one in the
-                discrete-time case.
-        mu
-            |Parameter values|.
-
-        Returns
-        -------
-        If typ is `'c_lrcf'` or `'o_lrcf'`, then the Gramian factor as a |VectorArray| from
-        `self.A.source`.
-        If typ is `'c_dense'` or `'o_dense'`, then the Gramian as a |NumPy array|.
-        """
-        assert typ in ('c_lrcf', 'o_lrcf', 'c_dense', 'o_dense')
-
-        return self.to_lti().gramian(typ, mu=mu)
-
-    def _sv_U_V(self, typ='lyap', mu=None):
-        """Compute (Hankel) singular values and vectors.
-
-        .. note::
-            Assumes the system is asymptotically stable.
-
-        Parameters
-        ----------
-        typ
-            The type of the Gramians used (see :meth:`LTIModel._sv_U_V`).
-        mu
-            |Parameter values|.
-
-        Returns
-        -------
-        sv
-            One-dimensional |NumPy array| of singular values.
-        Uh
-            |NumPy array| of left singular vectors as rows.
-        Vh
-            |NumPy array| of right singular vectors as rows.
-        """
-        return self.to_lti()._sv_U_V(typ=typ, mu=mu)
-
-    def hsv(self, mu=None):
-        """Hankel singular values.
-
-        .. note::
-            Assumes the system is asymptotically stable.
-
-        Parameters
-        ----------
-        mu
-            |Parameter values|.
-
-        Returns
-        -------
-        sv
-            One-dimensional |NumPy array| of singular values.
-        """
-        return self._sv_U_V(mu=mu)[0]
-
-    def h2_norm(self, mu=None):
-        """Compute the H2-norm.
-
-        .. note::
-            Assumes the system is asymptotically stable.
-
-        Parameters
-        ----------
-        mu
-            |Parameter values|.
-
-        Returns
-        -------
-        norm
-            H_2-norm.
-        """
-        return self.to_lti().h2_norm(mu=mu)
-
-    @defaults('tol')
-    def hinf_norm(self, mu=None, return_fpeak=False, ab13dd_equilibrate=False, tol=1e-10):
-        """Compute the H_infinity-norm.
-
-        .. note::
-            Assumes the system is asymptotically stable.
-
-        Parameters
-        ----------
-        mu
-            |Parameter values|.
-        return_fpeak
-            Should the frequency at which the maximum is achieved should be returned.
-        ab13dd_equilibrate
-            Should `slycot.ab13dd` use equilibration.
-        tol
-            Tolerance in norm computation.
-
-        Returns
-        -------
-        norm
-            H_infinity-norm.
-        fpeak
-            Frequency at which the maximum is achieved (if `return_fpeak` is `True`).
-        """
-        return self.to_lti().hinf_norm(mu=mu,
-                                       return_fpeak=return_fpeak,
-                                       ab13dd_equilibrate=ab13dd_equilibrate,
-                                       tol=tol)
-
-    def hankel_norm(self, mu=None):
-        """Compute the Hankel-norm.
-
-        .. note::
-            Assumes the system is asymptotically stable.
-
-        Parameters
-        ----------
-        mu
-            |Parameter values|.
-
-        Returns
-        -------
-        norm
-            Hankel-norm.
-        """
-        return self.hsv(mu=mu)[0]
+        return J, R, G, P, S, N, E, Q
 
     def __add__(self, other):
-        """Add a |PHLTIModel|, an |LTIModel|, or a |SecondOrderModel|."""
-        if isinstance(other, LTIModel):
-            return self.to_lti() + other
-
-        if isinstance(other, SecondOrderModel):
-            return self.to_lti() + other.to_lti()
-
         if not isinstance(other, PHLTIModel):
-            return NotImplemented
+            return super().__add__(other)
 
         assert self.S.source == other.S.source
-        assert self.S.range == other.S.range
-
-        assert self.N.source == other.N.source
-        assert self.N.range == other.N.range
 
         J = BlockDiagonalOperator([self.J, other.J])
         R = BlockDiagonalOperator([self.R, other.R])
         G = BlockColumnOperator([self.G, other.G])
         P = BlockColumnOperator([self.P, other.P])
         S = self.S + other.S
-        N = self.S + other.S
+        N = self.N + other.N
         if isinstance(self.E, IdentityOperator) and isinstance(other.E, IdentityOperator):
             E = IdentityOperator(BlockVectorSpace([self.solution_space, other.solution_space]))
         else:
             E = BlockDiagonalOperator([self.E, other.E])
-
-        return self.with_(J=J, R=R, G=G, P=P, S=S, N=N, E=E)
-
-    def __radd__(self, other):
-        """Add to an |LTIModel| or |SecondOrderModel|."""
-        if isinstance(other, LTIModel):
-            return other + self.to_lti()
-        elif isinstance(other, SecondOrderModel):
-            return other.to_lti() + self.to_lti()
+        if isinstance(self.Q, IdentityOperator) and isinstance(other.Q, IdentityOperator):
+            Q = IdentityOperator(BlockVectorSpace([self.solution_space, other.solution_space]))
         else:
-            return NotImplemented
+            Q = BlockDiagonalOperator([self.Q, other.Q])
 
-    def __sub__(self, other):
-        """Subtract a |PHLTIModel| or an |LTIModel|."""
-        return self + (-other)
-
-    def __rsub__(self, other):
-        """Subtract from an |LTIModel|."""
-        if isinstance(other, LTIModel):
-            return other - self.to_lti()
-        else:
-            return NotImplemented
-
-    def __neg__(self):
-        """Negate the |PHLTIModel|."""
-        return -self.to_lti()
-
-    def __mul__(self, other):
-        """Postmultiply by an |LTIModel|."""
-        return self.to_lti() * other
-
-    def __rmul__(self, other):
-        """Premultiply by an |LTIModel|."""
-        return other * self.to_lti()
+        return self.with_(J=J, R=R, G=G, P=P, S=S, N=N, E=E, Q=Q)
 
 
 class SecondOrderModel(Model):
@@ -2105,14 +1979,17 @@ class SecondOrderModel(Model):
         self.solution_space = M.source
         self.dim_output = Cp.range.dim
 
-        K = lambda s: s ** 2 * self.M + s * self.E + self.K
-        B = lambda s: self.B
-        C = lambda s: self.Cp + s * self.Cv
-        D = lambda s: self.D
-        dK = lambda s: 2 * s * self.M + self.E
-        dB = lambda s: ZeroOperator(self.B.range, self.B.source)
-        dC = lambda s: self.Cv
-        dD = lambda s: ZeroOperator(self.D.range, self.D.source)
+        s = ProjectionParameterFunctional('s')
+        s_quad = ExpressionParameterFunctional('s[0]**2', parameters=s.parameters)
+
+        K = s_quad * self.M + s * self.E + self.K
+        B = self.B
+        C = self.Cp + s * self.Cv
+        D = self.D
+        dK = 2 * s * self.M + self.E
+        dB = ZeroOperator(self.B.range, self.B.source)
+        dC = self.Cv
+        dD = ZeroOperator(self.D.range, self.D.source)
         parameters = Parameters.of(self.M, self.E, self.K, self.B, self.Cp, self.Cv, self.D)
 
         self.transfer_function = FactorizedTransferFunction(
@@ -2801,14 +2678,17 @@ class LinearDelayModel(Model):
         self.dim_output = C.range.dim
         self.q = len(Ad)
 
-        K = lambda s: LincombOperator((E, A) + Ad, (s, -1) + tuple(-np.exp(-taui * s) for taui in self.tau))
-        B = lambda s: self.B
-        C = lambda s: self.C
-        D = lambda s: self.D
-        dK = lambda s: LincombOperator((E,) + Ad, (1,) + tuple(taui * np.exp(-taui * s) for taui in self.tau))
-        dB = lambda s: ZeroOperator(self.B.range, self.B.source)
-        dC = lambda s: ZeroOperator(self.C.range, self.C.source)
-        dD = lambda s: ZeroOperator(self.D.range, self.D.source)
+        s = ProjectionParameterFunctional('s')
+        exp_tau_s = lambda taui: ExpressionParameterFunctional(f'exp(- {taui} * s[0])', parameters=s.parameters)
+
+        K = LincombOperator((E, A) + Ad, (s, -1) + tuple(-exp_tau_s(taui) for taui in self.tau))
+        B = self.B
+        C = self.C
+        D = self.D
+        dK = LincombOperator((E,) + Ad, (1,) + tuple(taui * exp_tau_s(taui) for taui in self.tau))
+        dB = ZeroOperator(self.B.range, self.B.source)
+        dC = ZeroOperator(self.C.range, self.C.source)
+        dD = ZeroOperator(self.D.range, self.D.source)
         parameters = Parameters.of(self.A, self.Ad, self.B, self.C, self.D, self.E)
 
         self.transfer_function = FactorizedTransferFunction(
@@ -2837,7 +2717,7 @@ class LinearDelayModel(Model):
 
     def __add__(self, other):
         """Add an |LTIModel|, |SecondOrderModel|, |PHLTIModel|, or |LinearDelayModel|."""
-        if isinstance(other, (SecondOrderModel, PHLTIModel)):
+        if isinstance(other, SecondOrderModel):
             other = other.to_lti()
 
         if isinstance(other, LTIModel):

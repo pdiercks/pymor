@@ -2,7 +2,6 @@
 # Copyright pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (https://opensource.org/licenses/BSD-2-Clause)
 
-from collections import OrderedDict
 from collections.abc import Iterable, Mapping
 from weakref import WeakValueDictionary
 
@@ -74,6 +73,7 @@ class rule:
 
 
 class match_class_base(rule):
+    """Base class for |rules|."""
 
     def __init__(self, *classes):
         super().__init__()
@@ -267,11 +267,11 @@ class RuleTable(BasicObject, metaclass=RuleTableMeta):
         For each |rule|, it is checked if it :meth:`~rule.matches` the given
         object. If `False`, the next |rule| in the table is considered.
         If `True` the corresponding :attr:`~rule.action` is executed with
-        `obj` as parameter. If execution of :attr:`~action` raises
+        `obj` as parameter. If execution of :attr:`~rule.action` raises
         :class:`~pymor.core.exceptions.RuleNotMatchingError`, the rule is
         considered as not matching, and execution continues with evaluation
         of the next rule. Otherwise, execution is stopped and the return value
-        of :attr:`rule.action` is returned to the caller.
+        of :attr:`~rule.action` is returned to the caller.
 
         If no |rule| matches, a :class:`~pymor.core.exceptions.NoMatchingRuleError`
         is raised.
@@ -365,7 +365,7 @@ class RuleTable(BasicObject, metaclass=RuleTableMeta):
         """Determine children of given object.
 
         This method returns a list of the names of all
-        attributes `a`, for which one of the folling is true:
+        attributes `a`, for which one of the following is true:
 
             1. `a` is an |Operator|.
             2. `a` is a dict` and each of its values is either an |Operator| or `None`.
@@ -393,25 +393,37 @@ class RuleTable(BasicObject, metaclass=RuleTableMeta):
 
 
 def print_children(obj):
-    def build_tree(obj):
 
-        def process_child(child):
+    child_p =      '│   '
+    new_child_p =  '├── '
+    last_child_p = '└── '
+    space =        '    '
+
+    print(obj.name)
+    def print_children(obj, prefix):
+        children = list(sorted(RuleTable.get_children(obj)))
+        for i, child in enumerate(children):
             c = getattr(obj, child)
+            c_p = last_child_p if i+1 == len(children) else new_child_p
             if isinstance(c, Mapping):
-                return child, OrderedDict((k + ': ' + v.name, build_tree(v)) for k, v in sorted(c.items()))
+                print(f'{prefix}{c_p}{child}')
+                c_p = space if i+1 == len(children) else child_p
+                for j, (k, v) in enumerate(sorted(c.items())):
+                    cc_p = last_child_p if j+1 == len(c) else new_child_p
+                    print(f'{prefix}{c_p}{cc_p}{k}: {v.name}')
+                    print_children(v, f'{prefix}{c_p}{space}')
             elif isinstance(c, Iterable):
-                return child, OrderedDict((str(i) + ': ' + v.name, build_tree(v)) for i, v in enumerate(c))
+                print(f'{prefix}{c_p}{child}')
+                c_p = space if i+1 == len(children) else child_p
+                for j, v in enumerate(c):
+                    cc_p = last_child_p if j+1 == len(c) else new_child_p
+                    print(f'{prefix}{c_p}{cc_p}{j}: {v.name}')
+                    print_children(v, f'{prefix}{c_p}{space}')
             else:
-                return child + ': ' + c.name, build_tree(c)
+                print(f'{prefix}{c_p}{child}: {c.name}')
+                print_children(c, f'{prefix}{child_p}')
+    print_children(obj, '')
 
-        return OrderedDict(process_child(child) for child in sorted(RuleTable.get_children(obj)))
-
-    try:
-        from asciitree import LeftAligned
-        print(LeftAligned()({obj.name: build_tree(obj)}))
-    except ImportError:
-        from pprint import pprint
-        pprint({obj.name: build_tree(obj)})
 
 
 def format_rules(rules):

@@ -90,11 +90,8 @@ def _launch_qt_app(main_window_factory, block):
     main_window = main_window_factory()
     main_window.show()
 
-    if getattr(sys, '_called_from_test', False):
-        QTimer.singleShot(1000, main_window.closeEvent)
-
     if block:
-        app.exec_()
+        app.exec()
     else:
         global _qt_app
         _qt_app = app                 # deleting the app ref somehow closes the window
@@ -327,7 +324,7 @@ def visualize_patch(grid, U, bounding_box=([0, 0], [1, 1]), codim=2, title=None,
             with NamedTemporaryFile(mode='wb', delete=False) as f:
                 dump(data, f)
                 filename = f.name
-            subprocess.Popen(['python', '-m', 'pymor.scripts.pymor_vis', '--delete', filename])
+            subprocess.Popen(['python3', '-m', 'pymor.scripts.pymor_vis', '--delete', filename])
             return
 
     U = (U.to_numpy().astype(np.float64, copy=False),) if isinstance(U, VectorArray) else \

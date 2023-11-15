@@ -18,7 +18,7 @@ class PAAAReductor(BasicObject):
     The reductor implements the parametric AAA algorithm and can be used either with
     data or a given full-order model, which can be a |TransferFunction| or any model which
     has a `transfer_function` attribute. MIMO and non-parametric data is accepted. See
-    :cite:`NST18` for the non-parametric and :cite:`CRBG20` for the parametric version of
+    :cite:`NST18` for the non-parametric and :cite:`CRBG23` for the parametric version of
     the algorithm. The reductor computes approximations based on the multivariate barycentric
     form :math:`H(s,p,...)` (see :func:`~pymor.reductors.aaa.make_bary_func`), where
     the inputs :math:`s,p,...` are referred to as the variables. Further, :math:`s` is
@@ -179,7 +179,7 @@ class PAAAReductor(BasicObject):
         assert len(max_itpl) == len(svs)
 
         # start iteration with constant function
-        bary_func = np.vectorize(lambda *args: np.mean(samples))
+        bary_func = lambda *args: np.mean(samples)
 
         # iteration counter
         j = 0
@@ -187,8 +187,9 @@ class PAAAReductor(BasicObject):
         while any(len(i) < mi for i, mi in zip(self.itpl_part, max_itpl)):
 
             # compute approximation error over entire sampled data set
-            grid = np.meshgrid(*svs, indexing='ij')
-            err_mat = np.abs(bary_func(*grid) - samples)
+            err_mat = np.empty(samples.shape)
+            for idx, vals in zip(np.ndindex(*[len(sv) for sv in svs]), itertools.product(*svs)):
+                err_mat[idx] = np.abs(np.squeeze(bary_func(*vals)) - samples[idx])
 
             # set errors to zero such that new interpolation points are consistent with max_itpl
             zero_idx = []
@@ -243,7 +244,7 @@ class PAAAReductor(BasicObject):
             itpl_samples = samples[np.ix_(*self.itpl_part)]
             itpl_samples = np.reshape(itpl_samples, -1)
             itpl_nodes = [sv[lp] for sv, lp in zip(svs, self.itpl_part)]
-            bary_func = np.vectorize(make_bary_func(itpl_nodes, itpl_samples, coefs))
+            bary_func = make_bary_func(itpl_nodes, itpl_samples, coefs)
 
             if self.post_process and d_nsp >= 1:
                 self.logger.info('Converged due to non-trivial null space of Loewner matrix after post-processing.')
@@ -444,7 +445,7 @@ def make_bary_func(itpl_nodes, itpl_vals, coefs, removable_singularity_tol=1e-14
                 d = 1 / d
             pd = np.kron(pd, d)
         coefs_pd = coefs * pd
-        num = np.inner(coefs_pd, itpl_vals)
+        num = np.tensordot(coefs_pd, itpl_vals, axes=1)
         denom = np.sum(coefs_pd)
         nd = num / denom
         return np.atleast_2d(nd)

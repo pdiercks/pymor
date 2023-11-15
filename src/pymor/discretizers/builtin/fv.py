@@ -231,7 +231,7 @@ class NonlinearAdvectionOperator(Operator):
         return self.with_(numerical_flux=self.numerical_flux.with_(**kwargs))
 
     def restricted(self, dofs):
-        source_dofs = np.setdiff1d(np.union1d(self.grid.neighbours(0, 0)[dofs].ravel(), dofs),
+        source_dofs = np.setdiff1d(np.union1d(self.grid.neighbors(0, 0)[dofs].ravel(), dofs),
                                    np.array([-1], dtype=np.int32),
                                    assume_unique=True)
         sub_grid = SubGrid(self.grid, source_dofs)
@@ -578,6 +578,21 @@ class ReactionOperator(NumpyMatrixBasedOperator):
 
 
 class NonlinearReactionOperator(Operator):
+    """Finite Volume nonlinear reaction |Operator|.
+
+    Parameters
+    ----------
+    grid
+        The |Grid| for which to assemble the operator.
+    reaction_function
+        The reaction function.
+    reaction_function_derivative
+        The reaction function derivative.
+    space_id
+        Space ID.
+    name
+        The name of the operator.
+    """
 
     linear = False
 
@@ -809,7 +824,7 @@ class DiffusionOperator(NumpyMatrixBasedOperator):
                              subentity_centers[superentity_indices[:, 1][inner_mask]])
                    + embeddings[1][SE_I1_I, :])
 
-        # comute distances for gradient approximations
+        # compute distances for gradient approximations
         centers = grid.centers(1)
         orthogonal_centers = grid.orthogonal_centers()
         VOLS = grid.volumes(1)
@@ -929,10 +944,12 @@ def discretize_stationary_fv(analytical_problem, diameter=None, domain_discretiz
     data
         Dictionary with the following entries:
 
-            :grid:           The generated |Grid|.
-            :boundary_info:  The generated |BoundaryInfo|.
-            :unassembled_m:  In case `preassemble` is `True`, the generated |Model|
-                             before preassembling operators.
+        :grid:
+            The generated |Grid|.
+        :boundary_info:
+            The generated |BoundaryInfo|.
+        :unassembled_m:
+            In case `preassemble` is `True`, the generated |Model| before preassembling operators.
     """
     assert isinstance(analytical_problem, StationaryProblem)
     assert grid is None or boundary_info is not None
@@ -1131,7 +1148,8 @@ def discretize_instationary_fv(analytical_problem, diameter=None, domain_discret
         intermediate vector that is calculated is returned.
     time_stepper
         The :class:`time-stepper <pymor.algorithms.timestepping.TimeStepper>`
-        to be used by :class:`~pymor.models.basic.InstationaryModel.solve`.
+        to be used by :meth:`~pymor.models.interface.Model.solve` of
+        |InstationaryModel|.
     nt
         If `time_stepper` is not specified, the number of time steps for implicit
         Euler time stepping.
@@ -1145,10 +1163,12 @@ def discretize_instationary_fv(analytical_problem, diameter=None, domain_discret
     data
         Dictionary with the following entries:
 
-            :grid:           The generated |Grid|.
-            :boundary_info:  The generated |BoundaryInfo|.
-            :unassembled_m:  In case `preassemble` is `True`, the generated |Model|
-                             before preassembling operators.
+        :grid:
+            The generated |Grid|.
+        :boundary_info:
+            The generated |BoundaryInfo|.
+        :unassembled_m:
+            In case `preassemble` is `True`, the generated |Model| before preassembling operators.
     """
     assert isinstance(analytical_problem, InstationaryProblem)
     assert isinstance(analytical_problem.stationary_part, StationaryProblem)

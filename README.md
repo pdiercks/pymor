@@ -66,8 +66,11 @@ For an installation with minimal dependencies, run
 
     pip install pymor
 
-Note that most included demo scripts additionally require `matplotlib` and
-Qt bindings such as `pyside2` to function.
+Note that most included demo scripts additionally require Qt bindings such as
+`pyside2` to function.
+Therefore we recommend install pyMOR with the `gui` extra:
+
+    pip install pymor[gui]  # 2023.1 and later
 
 ### Latest Release (with all Optional Dependencies)
 
@@ -92,13 +95,6 @@ because they need additional setup on your system:
 
       pip install slycot
 
-* [Py-M.E.S.S.](https://www.mpi-magdeburg.mpg.de/projects/mess):
-  dense and sparse matrix equation solvers for system-theoretic methods
-  (it is recommended to install from
-  [source](https://gitlab.mpi-magdeburg.mpg.de/mess/cmess-releases)):
-
-      pip install pymess
-
 ### Latest Development Version
 
 To install the latest development version of pyMOR, execute
@@ -115,21 +111,19 @@ might break (this is usually announced in our
 [discussion forum](https://github.com/pymor/pymor/discussions)),
 so you might prefer to install pyMOR from the current release branch:
 
-    pip install 'pymor[full] @ git+https://github.com/pymor/pymor@2022.2.x'
+    pip install 'pymor[full] @ git+https://github.com/pymor/pymor@2023.1.x'
 
 Release branches will always stay stable and will only receive bugfix commits
 after the corresponding release has been made.
 
-## Installation via conda/mamba
+## Installation via conda
 
 We recommend installation of pyMOR in a
-[conda environment](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
-with mamba.
+[conda environment](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html).
 
-pyMOR can be installed using conda/mamba by running
+pyMOR can be installed using conda by running
 
-    conda install -c conda-forge mamba
-    mamba install -c conda-forge pymor
+    conda install -c conda-forge pymor
 
 ## Documentation
 

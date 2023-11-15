@@ -1,5 +1,5 @@
+---
 name: pyproject_toml_changes
-
 on:
   pull_request_target:
     types:
@@ -8,14 +8,13 @@ on:
     paths:
       - pyproject.toml
       - requirements-ci-oldest-pins.in
-
 jobs:
   comment:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v6
         with:
-          script: |
+          script: |-
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -26,5 +25,5 @@ jobs:
             \`\`\`shell
             make ci_requirements
             \`\`\`
-            and commit the changed files to ensure that CI runs with the updateded dependencies.`
+            and commit the changed files to ensure that CI runs with the updated dependencies.`
             })

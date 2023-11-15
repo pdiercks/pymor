@@ -149,3 +149,19 @@ html .md-typeset .admonition > :last-child, html .md-typeset details > :last-chi
 .align-left {
     float: left;
 }
+
+.k3d-target canvas {
+    z-index: 0 !important;
+}
+
+.colorMapLegend {
+    z-index: 0 !important;
+}
+
+li[class*="toctree-l"] ul, li[class^="toctree-l"] ul {
+    display: none;
+}
+
+.active {
+    display: block !important;
+}

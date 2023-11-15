@@ -2,7 +2,7 @@
 # Copyright pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (https://opensource.org/licenses/BSD-2-Clause)
 
-__version__ = '2023.1.0.dev0'
+__version__ = '2023.2.0.dev0'
 
 import os
 import platform
@@ -48,8 +48,8 @@ def _init_mpi():
 
 _init_mpi()
 
-from pymor.core.config import config
-from pymor.core.defaults import load_defaults_from_file
+from pymor.core.config import config, is_jupyter
+from pymor.core.defaults import defaults, load_defaults_from_file
 
 if 'PYMOR_DEFAULTS' in os.environ:
     filename = os.environ['PYMOR_DEFAULTS']
@@ -75,6 +75,19 @@ from pymor.core.logger import set_log_format, set_log_levels
 
 set_log_levels()
 set_log_format()
+
+
+@defaults('enabled')
+def auto_load_jupyter_extension(enabled=True):
+    if not enabled:
+        return
+    if is_jupyter() and config.HAVE_IPYWIDGETS:
+        from IPython import get_ipython
+        ip = get_ipython()
+        ip.run_line_magic('load_ext', 'pymor.tools.jupyter')
+
+auto_load_jupyter_extension()
+
 
 from pymor.tools import mpi
 

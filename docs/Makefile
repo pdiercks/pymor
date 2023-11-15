@@ -6,7 +6,7 @@
 # --keep-going lets sphinx process the full build instead of aborting on first warning
 #   this is esp. necessary for myst-nb code-cells that otherwise show no visible code error
 SPHINXOPTS    = -W --keep-going
-SPHINXBUILD   = PYMOR_FORCE_JUPYTER=1 sphinx-build -j auto -v source
+SPHINXBUILD   = sphinx-build -j auto -v source
 PAPER         =
 BUILDDIR      = _build
 
@@ -49,7 +49,7 @@ clean:
 html:
 	cp -a source/*png .
 	cp -a source/pymor_defaults.py .
-	PYMOR_NBCONVERT=1 $(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
+	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
 	@echo
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 
