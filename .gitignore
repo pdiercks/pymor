@@ -87,3 +87,8 @@ docs/source/_static/standalone.js*
 
 # notebooks
 .ipynb_checkpoints/
+
+
+env.yaml
+pymordev.env/
+pyrightconfig.json
