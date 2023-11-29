@@ -2,12 +2,13 @@
 # Copyright pyMOR developers and contributors. All rights reserved.
 # License: BSD 2-Clause License (https://opensource.org/licenses/BSD-2-Clause)
 
+from pathlib import Path
+
 from pymor.core.config import config
 config.require('FENICSX')
 
 
-from dolfinx.la import create_petsc_vector
-from dolfinx.plot import create_vtk_mesh
+from dolfinx import la, plot, fem
 from petsc4py import PETSc
 import numpy as np
 
@@ -127,7 +128,7 @@ class FenicsxVectorSpace(ComplexifiedListVectorSpace):
         return id(self.V) + hash(self.id)
 
     def real_zero_vector(self):
-        impl = create_petsc_vector(self.V.dofmap.index_map, self.V.dofmap.index_map_bs)
+        impl = la.create_petsc_vector(self.V.dofmap.index_map, self.V.dofmap.index_map_bs)
         return FenicsxVector(impl)
 
     def real_full_vector(self, value):
@@ -135,9 +136,9 @@ class FenicsxVectorSpace(ComplexifiedListVectorSpace):
         v.impl.set(value)
         return v
 
-    def real_random_vector(self, distribution, random_state, **kwargs):
+    def real_random_vector(self, distribution, **kwargs):
         v = self.real_zero_vector()
-        values = _create_random_values(self.dim, distribution, random_state, **kwargs)  # TODO parallel?
+        values = _create_random_values(self.dim, distribution, **kwargs)  # TODO parallel?
         v.to_numpy()[:] = values
         return v
 
@@ -293,8 +294,45 @@ class FenicsxVisualizer(ImmutableObject):
         block
             If `True`, block execution until the plot window is closed.
         """
+
         if filename:
-            raise NotImplementedError
+            assert not isinstance(U, tuple)
+            assert U in self.space
+            if block:
+                self.logger.warning('visualize with filename!=None, block=True will not block')
+
+            # TODO add support for VTKFile, VTXWriter and FidesWriter
+            # TODO handle time series
+            supported = ('.xdmf')
+            suffix = Path(filename).suffix
+            if suffix not in supported:
+                msg = ('FenicsxVisualizer needs a filename with a suffix indicating a supported backend\n'
+                       + f'defaulting to .xdmf (possible choices: {supported})')
+                self.logger.warning(msg)
+                suffix = '.xdmf'
+
+            if suffix == '.xdmf':
+                from dolfinx.io.utils import XDMFFile as OutFile
+            else:
+                raise NotImplementedError
+
+            output = fem.Function(self.space.V)
+            if legend:
+                output.rename(legend, legend)
+
+            if len(U) > 1:
+                raise NotImplementedError
+
+            for u in U.vectors:
+                if u.imag_part is not None:
+                    raise NotImplementedError
+                output.vector[:] = u.real_part.impl[:]
+
+                domain = self.space.V.mesh
+                with OutFile(domain.comm, Path(filename).with_suffix(suffix), "w") as fh:
+                    fh.write_mesh(domain)
+                    fh.write_function(output)
+
         else:
             assert U in self.space and len(U) == 1 \
                 or (isinstance(U, tuple) and all(u in self.space for u in U) and all(len(u) == 1 for u in U))
@@ -306,16 +344,20 @@ class FenicsxVisualizer(ImmutableObject):
                 legend = tuple(f'U{i}' for i in range(len(U)))
             assert legend is None or len(legend) == len(U)
 
-            import pyvista
+            from pyvista.plotting.plotter import Plotter
+            from pyvista import UnstructuredGrid
+
+            # FIXME this does not work for VectorFunctionSpace
+
             rows = 1 if len(U) <= 2 else 2
             cols = int(np.ceil(len(U) / rows))
-            plotter = pyvista.Plotter(shape=(rows, cols))
-            mesh_data = create_vtk_mesh(self.space.V)
+            plotter = Plotter(shape=(rows, cols))
+            mesh_data = plot.vtk_mesh(self.space.V)
             for i, (u, l) in enumerate(zip(U, legend)):
                 row = i // cols
                 col = i - row*cols
                 plotter.subplot(row, col)
-                u_grid = pyvista.UnstructuredGrid(*mesh_data)
+                u_grid = UnstructuredGrid(*mesh_data)
                 u_grid.point_data[l] = u.vectors[0].real_part.impl.array.real
                 u_grid.set_active_scalars(l)
                 plotter.add_mesh(u_grid, show_edges=False)
