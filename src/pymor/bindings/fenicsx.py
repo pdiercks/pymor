@@ -288,7 +288,7 @@ class FenicsxVisualizer(ImmutableObject):
             `legend` has to be a tuple of the same length.
         filename
             If specified, write the data to that file. `filename` needs to have an extension
-            supported by FEniCS (e.g. `.pvd`).
+            supported by FEniCSx (e.g. `.xdmf`).
         separate_colorbars
             If `True`, use separate colorbars for each subplot.
         block
@@ -320,18 +320,17 @@ class FenicsxVisualizer(ImmutableObject):
             if legend:
                 output.rename(legend, legend)
 
-            if len(U) > 1:
-                raise NotImplementedError
+            # support for e.g. VTXWriter would change init of outstream
+            # as well as behaviour to write Mesh or Function?
+            domain = self.space.V.mesh
+            outstream = OutFile(domain.comm, Path(filename).with_suffix(suffix), "w")
+            outstream.write_mesh(domain)
 
-            for u in U.vectors:
+            for time, u in enumerate(U.vectors):
                 if u.imag_part is not None:
                     raise NotImplementedError
                 output.vector[:] = u.real_part.impl[:]
-
-                domain = self.space.V.mesh
-                with OutFile(domain.comm, Path(filename).with_suffix(suffix), "w") as fh:
-                    fh.write_mesh(domain)
-                    fh.write_function(output)
+                outstream.write_function(output, float(time))
 
         else:
             assert U in self.space and len(U) == 1 \
