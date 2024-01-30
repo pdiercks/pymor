@@ -301,9 +301,8 @@ class FenicsxVisualizer(ImmutableObject):
             if block:
                 self.logger.warning('visualize with filename!=None, block=True will not block')
 
-            # TODO add support for VTKFile, VTXWriter and FidesWriter
-            # TODO handle time series
-            supported = ('.xdmf')
+            # TODO add support for other formats? (VTKFile, FidesWriter)
+            supported = ('.xdmf', '.bp')
             suffix = Path(filename).suffix
             if suffix not in supported:
                 msg = ('FenicsxVisualizer needs a filename with a suffix indicating a supported backend\n'
@@ -311,26 +310,36 @@ class FenicsxVisualizer(ImmutableObject):
                 self.logger.warning(msg)
                 suffix = '.xdmf'
 
-            if suffix == '.xdmf':
-                from dolfinx.io.utils import XDMFFile as OutFile
-            else:
-                raise NotImplementedError
-
+            # ### Initialize output function
+            domain = self.space.V.mesh
             output = fem.Function(self.space.V)
             if legend:
                 output.rename(legend, legend)
 
-            # support for e.g. VTXWriter would change init of outstream
-            # as well as behaviour to write Mesh or Function?
-            domain = self.space.V.mesh
-            outstream = OutFile(domain.comm, Path(filename).with_suffix(suffix), "w")
-            outstream.write_mesh(domain)
+            # ### Initialize outstream
+            if suffix == '.xdmf':
+                from dolfinx.io.utils import XDMFFile
+                outstream = XDMFFile(domain.comm, Path(filename).with_suffix(suffix), "w")
+                outstream.write_mesh(domain)
+                def write_output(t):
+                    outstream.write_function(output, float(t))
+
+            elif suffix == '.bp':
+                from dolfinx.io.utils import VTXWriter
+                # Paraview 5.11.2 crashes for engine='BP5'
+                outstream = VTXWriter(domain.comm, Path(filename).with_suffix(suffix), [output], engine='BP4')
+                def write_output(t):
+                    outstream.write(float(t))
+
+            else:
+                raise NotImplementedError
 
             for time, u in enumerate(U.vectors):
                 if u.imag_part is not None:
                     raise NotImplementedError
                 output.vector[:] = u.real_part.impl[:]
-                outstream.write_function(output, float(time))
+                write_output(time)
+            outstream.close()
 
         else:
             assert U in self.space and len(U) == 1 \
