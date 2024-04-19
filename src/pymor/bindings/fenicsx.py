@@ -5,7 +5,8 @@
 from pathlib import Path
 
 from pymor.core.config import config
-config.require('FENICSX')
+
+config.require("FENICSX")
 
 
 from dolfinx import la, plot, fem
@@ -46,7 +47,7 @@ class FenicsxVector(CopyOnWriteVector):
 
     def _axpy(self, alpha, x):
         if x is self:
-            self.scal(1. + alpha)
+            self.scal(1.0 + alpha)
         else:
             self.impl.axpy(alpha, x.impl)
 
@@ -103,17 +104,46 @@ class FenicsxVector(CopyOnWriteVector):
 
 
 class ComplexifiedFenicsxVector(ComplexifiedVector):
-
     def amax(self):
-        raise NotImplementedError
+        if self.imag_part is None:
+            A = np.abs(self.real_part.impl.array)
+        else:
+            A = np.abs(self.real_part.impl.array + self.imag_part.impl.array * 1j)
+
+        # Notes on PETSc.Vec
+        # .abs --> in-place absolute value for each entry
+        # .local_size --> returns int
+        # .max --> returns tuple[int, float]: (dof, dof_value)
+        # there seems to be no way in the interface to compute amax without making a copy.
+
+        # maybe use vector.abs() and negate afterwards?
+
+        max_ind_on_rank = np.argmax(A)
+        max_val_on_rank = A[max_ind_on_rank]
+        from pymor.tools import mpi
+
+        if not mpi.parallel:
+            return max_ind_on_rank, max_val_on_rank
+        else:
+            max_global_ind_on_rank = max_ind_on_rank + self.real_part.impl.local_size
+            comm = self.real_part.impl.comm
+            comm_size = comm.Get_size()
+
+            max_inds = np.empty(comm_size, dtype="i")
+            comm.Allgather(np.array(max_global_ind_on_rank, dtype="i"), max_inds)
+
+            max_vals = np.empty(comm_size, dtype=np.float64)
+            comm.Allgather(np.array(max_val_on_rank), max_vals)
+
+            i = np.argmax(max_vals)
+            return max_inds[i], max_vals[i]
 
 
 class FenicsxVectorSpace(ComplexifiedListVectorSpace):
-
     real_vector_type = FenicsxVector
     vector_type = ComplexifiedFenicsxVector
 
-    def __init__(self, V, id='STATE'):
+    def __init__(self, V, id="STATE"):
         self.__auto_init(locals())
 
     @property
@@ -161,11 +191,11 @@ class FenicsxMatrixOperator(LinearComplexifiedListVectorArrayOperatorBase):
 
     def _solver_options(self, adjoint=False):
         if adjoint:
-            options = self.solver_options.get('inverse_adjoint') if self.solver_options else None
+            options = self.solver_options.get("inverse_adjoint") if self.solver_options else None
             if options is None:
-                options = self.solver_options.get('inverse') if self.solver_options else None
+                options = self.solver_options.get("inverse") if self.solver_options else None
         else:
-            options = self.solver_options.get('inverse') if self.solver_options else None
+            options = self.solver_options.get("inverse") if self.solver_options else None
         return options or _solver_options()
 
     def _create_solver(self, adjoint=False):
@@ -174,11 +204,11 @@ class FenicsxMatrixOperator(LinearComplexifiedListVectorArrayOperatorBase):
             try:
                 matrix = self._matrix_transpose
             except AttributeError as e:
-                raise RuntimeError('_create_solver called before _matrix_transpose has been initialized.') from e
+                raise RuntimeError("_create_solver called before _matrix_transpose has been initialized.") from e
         else:
             matrix = self.matrix
-        method = options.get('solver')
-        preconditioner = options.get('preconditioner')
+        method = options.get("solver")
+        preconditioner = options.get("preconditioner")
         solver = PETSc.KSP().create(self.source.V.mesh.comm)
         solver.setOperators(matrix)
         solver.setType(method)
@@ -191,7 +221,7 @@ class FenicsxMatrixOperator(LinearComplexifiedListVectorArrayOperatorBase):
         except AttributeError:
             solver = self._create_solver(adjoint)
         solver.solve(v, r)
-        if _solver_options()['keep_solver']:
+        if _solver_options()["keep_solver"]:
             if adjoint:
                 self._adjoint_solver = solver
             else:
@@ -207,31 +237,29 @@ class FenicsxMatrixOperator(LinearComplexifiedListVectorArrayOperatorBase):
         self.matrix.multTranspose(v.impl, r.impl)
         return r
 
-    def _real_apply_inverse_one_vector(self, v, mu=None, initial_guess=None,
-                                       least_squares=False, prepare_data=None):
+    def _real_apply_inverse_one_vector(self, v, mu=None, initial_guess=None, least_squares=False, prepare_data=None):
         if least_squares:
             raise NotImplementedError
-        r = (self.source.real_zero_vector() if initial_guess is None else
-             initial_guess.copy(deep=True))
+        r = self.source.real_zero_vector() if initial_guess is None else initial_guess.copy(deep=True)
         self._apply_inverse(r.impl, v.impl)
         return r
 
-    def _real_apply_inverse_adjoint_one_vector(self, u, mu=None, initial_guess=None,
-                                               least_squares=False, prepare_data=None):
+    def _real_apply_inverse_adjoint_one_vector(
+        self, u, mu=None, initial_guess=None, least_squares=False, prepare_data=None
+    ):
         if least_squares:
             raise NotImplementedError
-        r = (self.range.real_zero_vector() if initial_guess is None else
-             initial_guess.copy(deep=True))
+        r = self.range.real_zero_vector() if initial_guess is None else initial_guess.copy(deep=True)
 
         # since dolfin does not have "apply_inverse_adjoint", we assume
         # PETSc is used as backend and transpose the matrix
-        if not hasattr(self, '_matrix_transpose'):
+        if not hasattr(self, "_matrix_transpose"):
             self._matrix_transpose = PETSc.Mat()
             self.matrix.transpose(self._matrix_transpose)
         self._apply_inverse(r.impl, u.impl, adjoint=True)
         return r
 
-    def _assemble_lincomb(self, operators, coefficients, identity_shift=0., solver_options=None, name=None):
+    def _assemble_lincomb(self, operators, coefficients, identity_shift=0.0, solver_options=None, name=None):
         if not all(isinstance(op, FenicsxMatrixOperator) for op in operators):
             return None
         if identity_shift != 0:
@@ -251,10 +279,9 @@ class FenicsxMatrixOperator(LinearComplexifiedListVectorArrayOperatorBase):
         return FenicsxMatrixOperator(matrix, self.source.V, self.range.V, solver_options=solver_options, name=name)
 
 
-@defaults('solver', 'preconditioner', 'keep_solver')
-def _solver_options(solver=PETSc.KSP.Type.PREONLY,
-                    preconditioner=PETSc.PC.Type.LU, keep_solver=True):
-    return {'solver': solver, 'preconditioner': preconditioner, 'keep_solver': keep_solver}
+@defaults("solver", "preconditioner", "keep_solver")
+def _solver_options(solver=PETSc.KSP.Type.PREONLY, preconditioner=PETSc.PC.Type.LU, keep_solver=True):
+    return {"solver": solver, "preconditioner": preconditioner, "keep_solver": keep_solver}
 
 
 class FenicsxVisualizer(ImmutableObject):
@@ -269,8 +296,7 @@ class FenicsxVisualizer(ImmutableObject):
     def __init__(self, space):
         self.space = space
 
-    def visualize(self, U, title='', legend=None, filename=None, block=True,
-                  separate_colorbars=True):
+    def visualize(self, U, title="", legend=None, filename=None, block=True, separate_colorbars=True):
         """Visualize the provided data.
 
         Parameters
@@ -299,16 +325,18 @@ class FenicsxVisualizer(ImmutableObject):
             assert not isinstance(U, tuple)
             assert U in self.space
             if block:
-                self.logger.warning('visualize with filename!=None, block=True will not block')
+                self.logger.warning("visualize with filename!=None, block=True will not block")
 
             # TODO add support for other formats? (VTKFile, FidesWriter)
-            supported = ('.xdmf', '.bp')
+            supported = (".xdmf", ".bp")
             suffix = Path(filename).suffix
             if suffix not in supported:
-                msg = ('FenicsxVisualizer needs a filename with a suffix indicating a supported backend\n'
-                       + f'defaulting to .xdmf (possible choices: {supported})')
+                msg = (
+                    "FenicsxVisualizer needs a filename with a suffix indicating a supported backend\n"
+                    + f"defaulting to .xdmf (possible choices: {supported})"
+                )
                 self.logger.warning(msg)
-                suffix = '.xdmf'
+                suffix = ".xdmf"
 
             # ### Initialize output function
             domain = self.space.V.mesh
@@ -317,17 +345,21 @@ class FenicsxVisualizer(ImmutableObject):
                 output.rename(legend, legend)
 
             # ### Initialize outstream
-            if suffix == '.xdmf':
+            if suffix == ".xdmf":
                 from dolfinx.io.utils import XDMFFile
+
                 outstream = XDMFFile(domain.comm, Path(filename).with_suffix(suffix), "w")
                 outstream.write_mesh(domain)
+
                 def write_output(t):
                     outstream.write_function(output, float(t))
 
-            elif suffix == '.bp':
+            elif suffix == ".bp":
                 from dolfinx.io.utils import VTXWriter
+
                 # Paraview 5.11.2 crashes for engine='BP5'
-                outstream = VTXWriter(domain.comm, Path(filename).with_suffix(suffix), [output], engine='BP4')
+                outstream = VTXWriter(domain.comm, Path(filename).with_suffix(suffix), [output], engine="BP4")
+
                 def write_output(t):
                     outstream.write(float(t))
 
@@ -342,14 +374,17 @@ class FenicsxVisualizer(ImmutableObject):
             outstream.close()
 
         else:
-            assert U in self.space and len(U) == 1 \
+            assert (
+                U in self.space
+                and len(U) == 1
                 or (isinstance(U, tuple) and all(u in self.space for u in U) and all(len(u) == 1 for u in U))
+            )
             if not isinstance(U, tuple):
                 U = (U,)
             if isinstance(legend, str):
                 legend = (legend,)
             if legend is None:
-                legend = tuple(f'U{i}' for i in range(len(U)))
+                legend = tuple(f"U{i}" for i in range(len(U)))
             assert legend is None or len(legend) == len(U)
 
             from pyvista.plotting.plotter import Plotter
@@ -363,7 +398,7 @@ class FenicsxVisualizer(ImmutableObject):
             mesh_data = plot.vtk_mesh(self.space.V)
             for i, (u, l) in enumerate(zip(U, legend)):
                 row = i // cols
-                col = i - row*cols
+                col = i - row * cols
                 plotter.subplot(row, col)
                 u_grid = UnstructuredGrid(*mesh_data)
                 u_grid.point_data[l] = u.vectors[0].real_part.impl.array.real
