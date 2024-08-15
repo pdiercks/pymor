@@ -57,6 +57,14 @@ def _get_fenics_version():
     return df.__version__
 
 
+def _get_fenicsx_version():
+    import dolfinx as df
+    if parse(df.__version__) < parse('0.8.0'):
+        warnings.warn(f'FEniCSx bindings have been tested for version 0.8.0 and greater '
+                      f'(installed: {df.__version__}).')
+    return df.__version__
+
+
 def _get_dunegdt_version():
     import importlib
     version_ranges = {'dune-gdt': ('2021.1.2', '2023.2'), 'dune-xt': ('2021.1.2', '2023.2')}
@@ -134,6 +142,7 @@ _PACKAGES = {
     'DEALII': lambda: import_module('pymor_dealii').__version__,
     'DUNEGDT': _get_dunegdt_version,
     'FENICS': _get_fenics_version,
+    'FENICSX': _get_fenicsx_version,
     'GL': lambda: import_module('OpenGL.GL') and import_module('OpenGL').__version__,
     'IPYPARALLEL': lambda: import_module('ipyparallel').__version__,
     'IPYTHON': lambda: import_module('IPython').__version__,
