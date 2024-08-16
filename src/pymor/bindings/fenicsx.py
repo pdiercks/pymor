@@ -23,9 +23,10 @@ from pymor.core.base import ImmutableObject
 from pymor.core.config import config
 from pymor.core.defaults import defaults
 from pymor.core.pickle import unpicklable
-from pymor.operators.constructions import VectorFunctional, VectorOperator
+from pymor.operators.constructions import VectorFunctional, VectorOperator, ZeroOperator
 from pymor.operators.interface import Operator
 from pymor.operators.list import LinearComplexifiedListVectorArrayOperatorBase
+from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.vectorarrays.interface import _create_random_values
 from pymor.vectorarrays.list import (
     ComplexifiedListVectorSpace,
@@ -67,6 +68,7 @@ def _assemble_petsc_mat(A: PETSc.Mat, acpp, bcs):
     assemble_matrix(A, acpp, bcs=bcs)
     A.assemble()
 
+
 def _assemble_petsc_vec(b: PETSc.Vec, Lcpp, bcs, acpp=None):
     with b.localForm() as b_loc:
         b_loc.set(0)
@@ -77,6 +79,7 @@ def _assemble_petsc_vec(b: PETSc.Vec, Lcpp, bcs, acpp=None):
 
     b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
     set_bc(b, bcs)
+
 
 def _create_dirichlet_bcs(bcs: tuple[Union[BCGeom, BCTopo], ...]) -> list[df.fem.DirichletBC]:
     """Creates list of `df.fem.DirichletBC`.
@@ -186,8 +189,8 @@ def _restrict_form(form, S, R, submesh: SubmeshWrapper, padding=1e-14):
         name = function.name
         if function.function_space != S:
             raise NotImplementedError(
-                    'Restriction of coefficients that are not elements of the source space '
-                    'of the full operator is not supported.'
+                'Restriction of coefficients that are not elements of the source space '
+                'of the full operator is not supported.'
             )
         new_coeffs[function] = df.fem.Function(V_r_source, name=name)
         new_coeffs[function].interpolate(function, nmm_interpolation_data=interp_data)
@@ -317,7 +320,7 @@ class FenicsxVector(CopyOnWriteVector):
         return self.impl.dot(other.impl)
 
     def norm(self):
-        # u.vector.norm(PETSc.NormType.NORM_2) returns global norm
+        # u.x.petsc_vec.norm(PETSc.NormType.NORM_2) returns global norm
         # same behaviour as in legacy fenics
         return self.impl.norm(PETSc.NormType.NORM_2)
 
@@ -430,7 +433,7 @@ class FenicsxVectorSpace(ComplexifiedListVectorSpace):
 
     def real_random_vector(self, distribution, **kwargs):
         v = self.real_zero_vector()
-        values = _create_random_values(self.dim, distribution, **kwargs)  # TODO: parallel?
+        values = _create_random_values(self.V.dofmap.index_map.size_local, distribution, **kwargs)  # TODO: parallel?
         v.to_numpy()[:] = values
         return v
 
@@ -964,13 +967,21 @@ class FenicsxOperator(Operator):
 
     linear = False
 
-    def __init__(self, F: ufl.Form, source_space: FenicsxVectorSpace,
-                 range_space: FenicsxVectorSpace, source_function: df.fem.Function,
-                 dirichlet_bcs: tuple[Union[BCGeom, BCTopo]]=(), J: Optional[ufl.Form] = None,
-                 parameter_setter: Optional[Callable]=None,
-                 parameters: Optional[dict]={}, form_compiler_options: Optional[dict] = None,
-                 jit_options: Optional[dict] = None, solver_options: Optional[dict]=None,
-                 name: Optional[str]=None):
+    def __init__(
+        self,
+        F: ufl.Form,
+        source_space: FenicsxVectorSpace,
+        range_space: FenicsxVectorSpace,
+        source_function: df.fem.Function,
+        dirichlet_bcs: tuple[Union[BCGeom, BCTopo]] = (),
+        J: Optional[ufl.Form] = None,
+        parameter_setter: Optional[Callable] = None,
+        parameters: Optional[dict] = {},
+        form_compiler_options: Optional[dict] = None,
+        jit_options: Optional[dict] = None,
+        solver_options: Optional[dict] = None,
+        name: Optional[str] = None,
+    ):
         assert len(F.arguments()) == 1
         self.__auto_init(locals())
         self.source = source_space
@@ -978,19 +989,25 @@ class FenicsxOperator(Operator):
         self.parameters_own = parameters
         self._bcs = dirichlet_bcs
         self.bcs = _create_dirichlet_bcs(dirichlet_bcs)
-        self._L = df.fem.form(F, form_compiler_options=form_compiler_options,
-                                         jit_options=jit_options)
+        self._L = df.fem.form(F, form_compiler_options=form_compiler_options, jit_options=jit_options)
         if J is None:  # Create the Jacobian matrix, dF/du
             V = source_function.function_space
             du = ufl.TrialFunction(V)
             J = ufl.derivative(F, source_function, du)
 
-        self._a = df.fem.form(J, form_compiler_options=form_compiler_options,
-                                         jit_options=jit_options)
+        self.J = J
+        self._a = df.fem.form(J, form_compiler_options=form_compiler_options, jit_options=jit_options)
         # Note that `dolfinx.nls.petsc.NewtonSolver` usually manages
         # the matrix and vector objects
         self._A = create_matrix(self._a)
         self._b = create_vector(self._L)
+
+        # store V.dofmap.index_map to access data of distributed vectors
+        self._imap = source_space.V.dofmap.index_map
+        # u.x.array.size == imap.size_local + imap.num_ghosts
+        # set local data to 1, and data on the overlap to 0 (ghost values)
+        # u.x.array[:imap.size_local] = 1.
+        # u.x.array[imap.size_local:] = 0.
 
     def _set_mu(self, mu=None):
         assert self.parameters.assert_compatible(mu)
@@ -1014,12 +1031,11 @@ class FenicsxOperator(Operator):
         self._set_mu(mu)
         R = []
         source_vec = self.source_function.x.petsc_vec
+        size_local = self._imap.size_local
         for u in U.vectors:
             if u.imag_part is not None:
                 raise NotImplementedError
-            source_vec[:] = u.real_part.impl
-            # TODO: what happens if the bcs are not inhomogeneous?
-            # _assemble_petsc_vec(self._b, self._L, self.bcs, acpp=self._a)
+            source_vec[:size_local] = u.real_part.impl
             self._assemble_vector(source_vec)
             R.append(self._b.copy())
         return self.range.make_array(R)
@@ -1031,89 +1047,143 @@ class FenicsxOperator(Operator):
             raise NotImplementedError
         self._set_mu(mu)
         source_vec = self.source_function.x.petsc_vec
-        source_vec[:] = U.vectors[0].real_part.impl
+        size_local = self._imap.size_local
+        source_vec[:size_local] = U.vectors[0].real_part.impl
         _assemble_petsc_mat(self._A, self._a, self.bcs)
         return FenicsxMatrixOperator(self._A, self.source.V, self.range.V)
 
-    def restricted(self, dofs):
-        raise NotImplementedError
+    def restricted(self, dofs, padding=1e-14):
         with self.logger.block(f'Restricting operator to {len(dofs)} dofs ...'):
             if len(dofs) == 0:
                 return ZeroOperator(NumpyVectorSpace(0), NumpyVectorSpace(0)), np.array([], dtype=int)
 
-            if self.source.V.mesh().id() != self.range.V.mesh().id():
+            if self.source.V.mesh.__hash__() != self.range.V.mesh.__hash__():
                 raise NotImplementedError
 
             self.logger.info('Computing affected cells ...')
-            mesh = self.source.V.mesh()
-            range_dofmap = self.range.V.dofmap()
-            affected_cell_indices = set()
-            for c in df.cells(mesh):
-                cell_index = c.index()
-                local_dofs = range_dofmap.cell_dofs(cell_index)
-                for ld in local_dofs:
-                    if ld in dofs:
-                        affected_cell_indices.add(cell_index)
-                        continue
-            affected_cell_indices = sorted(affected_cell_indices)
+            S = self.source.V
+            R = self.range.V
+            domain = S.mesh
+            cells = _affected_cells(S, dofs)
 
-            if any(i.integral_type() not in ('cell', 'exterior_facet')
-                   for i in self.form.integrals()):
+            if any(i.integral_type() not in ('cell', 'exterior_facet') for i in self.F.integrals()):
                 # enlarge affected_cell_indices if needed
                 raise NotImplementedError
 
             self.logger.info('Computing source DOFs ...')
-            source_dofmap = self.source.V.dofmap()
+            # ### compute source dofs based on affected cells
+            source_dofmap = S.dofmap
             source_dofs = set()
-            for cell_index in affected_cell_indices:
+            for cell_index in cells:
                 local_dofs = source_dofmap.cell_dofs(cell_index)
-                source_dofs.update(local_dofs)
-            source_dofs = np.array(sorted(source_dofs), dtype=np.intc)
+                for ld in local_dofs:
+                    for b in range(source_dofmap.bs):
+                        source_dofs.add(ld * source_dofmap.bs + b)
+            source_dofs = np.array(sorted(source_dofs), dtype=dofs.dtype)
 
             self.logger.info('Building submesh ...')
-            subdomain = df.MeshFunction('size_t', mesh, mesh.geometry().dim())
-            for ci in affected_cell_indices:
-                subdomain.set_value(ci, 1)
-            submesh = df.SubMesh(mesh, subdomain, 1)
+            tdim = domain.topology.dim
+            submesh = SubmeshWrapper(*df.mesh.create_submesh(domain, tdim, cells))
 
             self.logger.info('Building UFL form on submesh ...')
-            form_r, V_r_source, V_r_range, source_function_r = self._restrict_form(submesh, source_dofs)
+            restricted_form, V_r_source, V_r_range, source_function_r = self._restrict_form(submesh)
+            # interpolation data required to restrict Dirichlet BCs and compute dof maps
+            interp_data = df.fem.create_nonmatching_meshes_interpolation_data(
+                V_r_source.mesh, V_r_source.element, S.mesh, padding=padding
+            )
 
             self.logger.info('Building DirichletBCs on submesh ...')
-            bc_r = self._restrict_dirichlet_bcs(submesh, source_dofs, V_r_source)
+            r_bcs = list()
+            for nt in self._bcs:
+                if isinstance(nt.value, df.fem.Function):
+                    # interpolate function to submesh
+                    g = df.fem.Function(V_r_source, name=nt.value.name)
+                    g.interpolate(nt.value, nmm_interpolation_data=interp_data)
+                else:
+                    # g is of type df.fem.Constant or np.ndarray
+                    g = nt.value
+
+                if isinstance(nt, BCGeom):
+                    rbc = BCGeom(g, nt.locator, V_r_source)
+                elif isinstance(nt, BCTopo):
+                    if nt.entity_dim == 1 and tdim == 3:
+                        raise NotImplementedError
+                    rbc = _restrict_bc_topo(S.mesh, submesh, nt, g, V_r_source)
+                else:
+                    raise TypeError
+                r_bcs.append(rbc)
+            bc_r = tuple(r_bcs)
 
             self.logger.info('Computing source DOF mapping ...')
-            restricted_source_dofs = self._build_dof_map(self.source.V, V_r_source, source_dofs)
+            restricted_source_dofs = _build_dof_map(S, V_r_source, source_dofs, interp_data)
 
             self.logger.info('Computing range DOF mapping ...')
-            restricted_range_dofs = self._build_dof_map(self.range.V, V_r_range, dofs)
+            restricted_range_dofs = _build_dof_map(R, V_r_range, dofs, interp_data)
 
-            op_r = FenicsOperator(form_r, FenicsVectorSpace(V_r_source), FenicsVectorSpace(V_r_range),
-                                  source_function_r, dirichlet_bcs=bc_r, parameter_setter=self.parameter_setter,
-                                  parameters=self.parameters)
+            # sanity checks
+            assert source_dofs.size == V_r_source.dofmap.bs * V_r_source.dofmap.index_map.size_local
+            assert restricted_source_dofs.size == source_dofs.size
+            assert restricted_range_dofs.size == dofs.size
 
-            return (RestrictedFenicsOperator(op_r, restricted_range_dofs),
-                    source_dofs[np.argsort(restricted_source_dofs)])
+            # TODO: support parameter-dependent coefficient in form F?
+            # see FenicsxMatrixBasedOperator.restricted
 
-    def _restrict_form(self, submesh, source_dofs):
-        V_r_source = df.FunctionSpace(submesh, self.source.V.ufl_element())
-        V_r_range = df.FunctionSpace(submesh, self.range.V.ufl_element())
-        assert V_r_source.dim() == len(source_dofs)
+            # TODO: if self.J is not None, this needs to be restricted to submesh as well
+            # if instead only J = ufl.derivative(F) is supported, then argument J to FenicsxOperator
+            # is not needed at all
+            # J=None --> trigger computation of J on submesh
+            op_r = FenicsxOperator(
+                restricted_form,
+                FenicsxVectorSpace(V_r_source),
+                FenicsxVectorSpace(V_r_range),
+                source_function_r,
+                dirichlet_bcs=bc_r,
+                J=None,
+                parameter_setter=self.parameter_setter,
+                parameters=self.parameters,
+                form_compiler_options=self.form_compiler_options,
+                jit_options=self.jit_options,
+                solver_options=self.solver_options,
+            )
 
-        if self.source.V != self.range.V:
-            assert all(arg.ufl_function_space() != self.source.V for arg in self.form.arguments())
-        args = tuple((df.function.argument.Argument(V_r_range, arg.number(), arg.part())
-                      if arg.ufl_function_space() == self.range.V else arg)
-                     for arg in self.form.arguments())
+            return (
+                RestrictedFenicsxOperator(op_r, restricted_range_dofs),
+                source_dofs[np.argsort(restricted_source_dofs)],
+            )
 
-        if any(isinstance(coeff, df.Function) and coeff != self.source_function for coeff in
-               self.form.coefficients()):
+    def _restrict_form(self, submesh: SubmeshWrapper, padding=1e-14):
+        S = self.source.V
+        R = self.range.V
+        form = self.F
+
+        V_r_source = df.fem.functionspace(submesh.mesh, S.ufl_element())
+        if S != R:
+            assert all(arg.ufl_function_space() != S for arg in form.arguments())
+            V_r_range = df.fem.functionspace(submesh.mesh, R.ufl_element())
+        else:
+            V_r_range = V_r_source
+
+        # TODO: interpolation is only required if a parametric function that the
+        # form depends on needs to be mapped to the submesh
+        # interp_data = df.fem.create_nonmatching_meshes_interpolation_data(
+        #     V_r_source.mesh, V_r_source.element, S.mesh, padding=padding
+        # )
+
+        args = tuple(
+            (
+                df.fem.function.ufl.argument.Argument(V_r_range, arg.number(), arg.part())
+                if arg.ufl_function_space() == R
+                else arg
+            )
+            for arg in form.arguments()
+        )
+
+        if any(isinstance(coeff, df.fem.Function) and coeff != self.source_function for coeff in form.coefficients()):
             raise NotImplementedError
 
-        source_function_r = df.Function(V_r_source)
-        form_r = ufl.replace_integral_domains(
-            self.form(*args, coefficients={self.source_function: source_function_r}),
-            submesh.ufl_domain()
+        source_function_r = df.fem.Function(V_r_source)
+        form_r = _replace_integral_domains(
+            form(*args, coefficients={self.source_function: source_function_r}), submesh.mesh.ufl_domain()
         )
 
         return form_r, V_r_source, V_r_range, source_function_r
@@ -1147,4 +1217,4 @@ class RestrictedFenicsxOperator(Operator):
         UU = self.op.source.zeros()
         UU.vectors[0].real_part.impl[:] = np.ascontiguousarray(U.to_numpy()[0])
         JJ = self.op.jacobian(UU, mu=mu)
-        return NumpyMatrixOperator(JJ.matrix.array()[self.restricted_range_dofs, :])
+        return NumpyMatrixOperator(JJ.matrix[self.restricted_range_dofs, :])
