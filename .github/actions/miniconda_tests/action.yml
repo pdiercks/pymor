@@ -76,14 +76,20 @@ runs:
         fi
         echo "QT_DEBUG_PLUGINS=1" >> $GITHUB_ENV
     - name: Sanity check
-      shell: bash -l {0}
+      shell: bash -el {0}
       run: |
         ${PYTEST_PREFIX} python -c "from matplotlib.pyplot import *"
         ${PYTEST_PREFIX} python -c "from qtpy.QtGui import *"
         ${PYTEST_PREFIX} python -c "import OpenGL"
         ${PYTEST_PREFIX} python -c "import OpenGL.GL as gl"
+    - name: Print config
+      shell: bash -el {0}
+      env:
+        PYTHONPATH: ./src
+      run: |
+        ${PYTEST_PREFIX} python -c "import pymor; print(pymor.config)"
     - name: Run pytest
-      shell: bash -l {0}
+      shell: bash -el {0}
       env:
         PYTHONPATH: ./src
         PYMOR_HYPOTHESIS_PROFILE: ${{ inputs.hypothesis_profile }}
@@ -98,7 +104,7 @@ runs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: coverage_results (${{ runner.os }}, ${{ inputs.python }})
+        name: coverage_results-${{ runner.os }}_${{ inputs.python }}
         path: ${{ inputs.coverage_file }}.xml
         if-no-files-found: error
     - name: Upload Coverage RAW
